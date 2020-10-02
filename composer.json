@@ -1,0 +1,23 @@
+{
+  "autoload": {
+    "psr-4": {
+      "Pdsinterop\\Solid\\Resources": "src/"
+    }
+  },
+  "config": {
+    "bin-dir": "./bin",
+    "platform": {
+      "php": "7.2",
+      "ext-mbstring": "0.0.0"
+    },
+    "sort-packages": true
+  },
+  "description": "Solid HTTPS REST API specification compliant implementation for handling Resource CRUD",
+  "license": "MIT",
+  "name": "pdsinterop/solid-resources",
+  "require": {
+    "php": ">=7.2",
+    "ext-mbstring": "*"
+  },
+  "type": "library"
+}

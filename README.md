@@ -4,10 +4,8 @@
     - Add required code block illustrating how to install
     - Add required code block illustrating how to use
 - [ ] Fill in or remove optional sections: "Acknowledgements", "API", "Background", "Maintainers" 
-- [ ] Add any extra sections
 - [ ] Generate a changelog
       `github_changelog_generator -u pdsinterop -p solid-storage`
-- [ ] Remove this section once complete
 
 # Solid Resource Server
 
@@ -25,13 +23,19 @@
 
 _Solid HTTPS REST API specification compliant implementation for handling Resource CRUD_
 
+The Solid specification for reading and writing resources in Solid Server (or
+"Solid Pod") extends the [Linked Data Platform specification][w3c-spec-ldp]. 
+This project provides a simple REST API for CRUD operations on resources and
+containers, that adheres to the [Solid HTTPS REST API Spec][solid-spec-api-rest]
+
+[w3c-spec-ldp]: https://www.w3.org/TR/ldp/
+[solid-spec-api-rest]: https://github.com/solid/solid-spec/blob/master/api-rest.md
+
 ## Table of Contents
 
 <!-- toc -->
 <!-- markdown-toc --bullets='-' -i -- README.md -->
 <!-- tocstop -->
-
-## Background
 
 ## Installation
 
@@ -45,29 +49,9 @@ _Solid HTTPS REST API specification compliant implementation for handling Resour
 @FIXME: Add required code block illustrating how to use
 ```
 
-## Any extra sections go here
-
-```
-    .
-    ├── bin/                <- Scripts
-    ├── cli/                <- Delivery mechanism for command-line interfaces
-    ├── docs/               <- Project documentation
-    ├── lib/                <- Non-vendor libraries/packages
-    ├── src/                <- Project specific code
-    ├── tests/              <- Tests for project specific code
-    ├── web/                <- Delivery mechanism for web interfaces
-    ├── _config.yml         <- Jekyll config (can also be server from `docs/`)
-    ├── bpkg.json           <- BASH dependencies and project declaration
-    ├── composer.json       <- PHP dependencies and project declaration
-    ├── package.json        <- NodeJS dependencies and project declaration
-    ├── CODE_OF_CONDUCT.md  <- Community document
-    ├── CONTRIBUTING.md     <- Community document
-    ├── LICENSE             <- License terms and owner
-    └── README.md           <- Main project documentation entry point
-
-```
-
 ## API
+
+    @TODO: Add docs for the REST API
 
 ## Contribute
 

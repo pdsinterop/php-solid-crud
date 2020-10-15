@@ -4,8 +4,10 @@
     - Add required code block illustrating how to install
     - Add required code block illustrating how to use
 - [ ] Fill in or remove optional sections: "Acknowledgements", "API", "Background", "Maintainers" 
+- [ ] Add any extra sections
 - [ ] Generate a changelog
       `github_changelog_generator -u pdsinterop -p solid-storage`
+- [ ] Remove this section once complete
 
 # Solid Resource Server
 
@@ -75,9 +77,9 @@ All code created by PDS Interop is licensed under the [MIT License][license-link
 [changelog]: CHANGELOG.md
 [code-of-conduct]: CODE_OF_CONDUCT.md
 [contributing-link]: CONTRIBUTING.md
-[contributors-page]: https://github.com/pdsinterop/php-solid-resources/contributors
-[issues-link]: https://github.com/pdsinterop/php-solid-resources/issues
-[releases-page]: https://github.com/pdsinterop/php-solid-resources/releases
+[contributors-page]: https://github.com/pdsinterop/php-solid-crud/contributors
+[issues-link]: https://github.com/pdsinterop/php-solid-crud/issues
+[releases-page]: https://github.com/pdsinterop/php-solid-crud/releases
 [keep-a-changelog-link]: https://keepachangelog.com/
 [keep-a-changelog-shield]: https://img.shields.io/badge/Keep%20a%20Changelog-f15d30.svg?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9IiNmZmYiIHZpZXdCb3g9IjAgMCAxODcgMTg1Ij48cGF0aCBkPSJNNjIgN2MtMTUgMy0yOCAxMC0zNyAyMmExMjIgMTIyIDAgMDAtMTggOTEgNzQgNzQgMCAwMDE2IDM4YzYgOSAxNCAxNSAyNCAxOGE4OSA4OSAwIDAwMjQgNCA0NSA0NSAwIDAwNiAwbDMtMSAxMy0xYTE1OCAxNTggMCAwMDU1LTE3IDYzIDYzIDAgMDAzNS01MiAzNCAzNCAwIDAwLTEtNWMtMy0xOC05LTMzLTE5LTQ3LTEyLTE3LTI0LTI4LTM4LTM3QTg1IDg1IDAgMDA2MiA3em0zMCA4YzIwIDQgMzggMTQgNTMgMzEgMTcgMTggMjYgMzcgMjkgNTh2MTJjLTMgMTctMTMgMzAtMjggMzhhMTU1IDE1NSAwIDAxLTUzIDE2bC0xMyAyaC0xYTUxIDUxIDAgMDEtMTItMWwtMTctMmMtMTMtNC0yMy0xMi0yOS0yNy01LTEyLTgtMjQtOC0zOWExMzMgMTMzIDAgMDE4LTUwYzUtMTMgMTEtMjYgMjYtMzMgMTQtNyAyOS05IDQ1LTV6TTQwIDQ1YTk0IDk0IDAgMDAtMTcgNTQgNzUgNzUgMCAwMDYgMzJjOCAxOSAyMiAzMSA0MiAzMiAyMSAyIDQxLTIgNjAtMTRhNjAgNjAgMCAwMDIxLTE5IDUzIDUzIDAgMDA5LTI5YzAtMTYtOC0zMy0yMy01MWE0NyA0NyAwIDAwLTUtNWMtMjMtMjAtNDUtMjYtNjctMTgtMTIgNC0yMCA5LTI2IDE4em0xMDggNzZhNTAgNTAgMCAwMS0yMSAyMmMtMTcgOS0zMiAxMy00OCAxMy0xMSAwLTIxLTMtMzAtOS01LTMtOS05LTEzLTE2YTgxIDgxIDAgMDEtNi0zMiA5NCA5NCAwIDAxOC0zNSA5MCA5MCAwIDAxNi0xMmwxLTJjNS05IDEzLTEzIDIzLTE2IDE2LTUgMzItMyA1MCA5IDEzIDggMjMgMjAgMzAgMzYgNyAxNSA3IDI5IDAgNDJ6bS00My03M2MtMTctOC0zMy02LTQ2IDUtMTAgOC0xNiAyMC0xOSAzN2E1NCA1NCAwIDAwNSAzNGM3IDE1IDIwIDIzIDM3IDIyIDIyLTEgMzgtOSA0OC0yNGE0MSA0MSAwIDAwOC0yNCA0MyA0MyAwIDAwLTEtMTJjLTYtMTgtMTYtMzEtMzItMzh6bS0yMyA5MWgtMWMtNyAwLTE0LTItMjEtN2EyNyAyNyAwIDAxLTEwLTEzIDU3IDU3IDAgMDEtNC0yMCA2MyA2MyAwIDAxNi0yNWM1LTEyIDEyLTE5IDI0LTIxIDktMyAxOC0yIDI3IDIgMTQgNiAyMyAxOCAyNyAzM3MtMiAzMS0xNiA0MGMtMTEgOC0yMSAxMS0zMiAxMXptMS0zNHYxNGgtOFY2OGg4djI4bDEwLTEwaDExbC0xNCAxNSAxNyAxOEg5NnoiLz48L3N2Zz4K
 [license-link]: ./LICENSE
@@ -91,6 +93,6 @@ All code created by PDS Interop is licensed under the [MIT License][license-link
 [solid-site]: https://github.com/solid/solid
 [standard-readme-link]: https://github.com/RichardLitt/standard-readme
 [standard-readme-shield]: https://img.shields.io/badge/-Standard%20Readme-brightgreen.svg
-[version-link]: https://packagist.org/packages/pdsinterop/solid-resources
+[version-link]: https://packagist.org/packages/pdsinterop/solid-crud
 [version-shield]: https://img.shields.io/github/v/release/pdsinterop/php-solid-storage.svg?sort=semver
 

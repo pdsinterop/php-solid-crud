@@ -19,7 +19,7 @@
   },
   "description": "Solid HTTPS REST API specification compliant implementation for handling Resource CRUD",
   "license": "MIT",
-  "name": "pdsinterop/solid-resources",
+  "name": "pdsinterop/solid-crud",
   "require": {
     "php": ">=7.2",
     "ext-mbstring": "*",

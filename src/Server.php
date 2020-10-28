@@ -124,7 +124,18 @@ class Server
                 break;
 
             case 'POST':
-				$response = $this->handleCreateRequest($response, $path, $contents);
+				if ($filesystem->has($path) === true) {
+					$mimetype = $filesystem->getMimetype($path);
+					if ($mimetype === self::MIME_TYPE_DIRECTORY) {
+						$filename = $this->guid();
+						$response = $this->handleCreateRequest($response, $path . $filename, $contents);
+					} else {
+						$response = $this->handleUpdateRequest($response, $path, $contents);
+					}
+				} else {
+					$response = $this->handleCreateRequest($response, $path, $contents);
+				}
+			break;
             case 'PUT':
 				switch ($link) {
 					case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
@@ -132,9 +143,9 @@ class Server
 					break;
 					default:
 						if ($filesystem->has($path) === true) {
-							$response = $this->handleUpdateRequest($response, $path, $contents . $link);
+							$response = $this->handleUpdateRequest($response, $path, $contents);
 						} else {
-							$response = $this->handleCreateRequest($response, $path, $contents . $link);
+							$response = $this->handleCreateRequest($response, $path, $contents);
 						}
 					break;
 				}
@@ -159,7 +170,12 @@ class Server
         } else {
             // @FIXME: Handle error scenarios correctly (for instance trying to create a file underneath another file)
             $success = $filesystem->write($path, $contents);
-            $response = $response->withStatus($success ? 201 : 500);
+			if ($success) {
+				$response = $response->withHeader("Location", $path);
+				$response = $response->withStatus(201);
+			} else {
+				$response = $response->withStatus(500);
+			}
         }
 
         return $response;
@@ -241,9 +257,11 @@ class Server
                 $response = $response->withStatus(200);
             } else {
                 $contents = $filesystem->read($path);
+				$mimetype = $filesystem->getMimetype($path);
 
                 if ($contents !== false) {
                     $response->getBody()->write($contents);
+					$response = $response->withHeader("Content-type", $mimetype);
                     $response = $response->withStatus(200);
                 }
             }
@@ -252,6 +270,10 @@ class Server
         return $response;
     }
 	
+	private function guid() {
+		return sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(16384, 20479), mt_rand(32768, 49151), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535));
+	}
+
 	private function listDirectoryAsTurtle($path) {
         $filesystem = $this->filesystem;
 		$listContents = $filesystem->listContents($path);

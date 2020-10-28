@@ -13,8 +13,10 @@ class Server
     public const ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER = 'Only empty containers can be deleted, "%s" is not empty';
     public const ERROR_NOT_IMPLEMENTED_SPARQL = 'SPARQL Not Implemented';
     public const ERROR_PATH_DOES_NOT_EXIST = 'Requested path "%s" does not exist';
+    public const ERROR_PATH_EXISTS = 'Requested path "%s" already exists';
     public const ERROR_POST_EXISTING_RESOURCE = 'Requested path "%s" already exists. Can not "POST" to existing resource. Use "PUT" instead';
     public const ERROR_PUT_NON_EXISTING_RESOURCE = self::ERROR_PATH_DOES_NOT_EXIST . '. Can not "PUT" non-existing resource. Use "POST" instead';
+    public const ERROR_PUT_EXISTING_RESOURCE = self::ERROR_PATH_EXISTS . '. Can not "PUT" existing container.';
     public const ERROR_UNKNOWN_HTTP_METHOD = 'Unknown or unsupported HTTP METHOD "%s"';
 
     private const MIME_TYPE_DIRECTORY = 'directory';
@@ -52,8 +54,10 @@ class Server
         $method = $this->getRequestMethod($request);
 
         $contents = $request->getBody()->getContents();
+		$link = $request->getHeaderLine("Link");
+		// <http://www.w3.org/ns/ldp#BasicContainer>; rel="type"
 
-        return $this->handle($method, $path, $contents);
+        return $this->handle($method, $path, $contents, $link);
     }
 
     ////////////////////////////// UTILITY METHODS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -74,9 +78,10 @@ class Server
         return $method;
     }
 
-    private function handle(string $method, string $path, $contents) : Response
+    private function handle(string $method, string $path, $contents, $link) : Response
     {
         $response = $this->response;
+        $filesystem = $this->filesystem;
 
         // Lets assume the worst...
         $response = $response->withStatus(500);
@@ -119,15 +124,21 @@ class Server
                 break;
 
             case 'POST':
-                // @TODO: Handle creation of a directory/container
-                $response = $this->handleCreateRequest($response, $path, $contents);
-                break;
-
+				$response = $this->handleCreateRequest($response, $path, $contents);
             case 'PUT':
-                // @TODO: Handle update of a directory/container
-                $response = $this->handleUpdateRequest($response, $path, $contents);
-                break;
-
+				switch ($link) {
+					case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
+						$response = $this->handleCreateDirectoryRequest($response, $path);
+					break;
+					default:
+						if ($filesystem->has($path) === true) {
+							$response = $this->handleUpdateRequest($response, $path, $contents . $link);
+						} else {
+							$response = $this->handleCreateRequest($response, $path, $contents . $link);
+						}
+					break;
+				}
+			break;
             default:
                 $message = vsprintf(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
                 throw new \LogicException($message);
@@ -142,7 +153,7 @@ class Server
         $filesystem = $this->filesystem;
 
         if ($filesystem->has($path) === true) {
-            $message = vsprintf(self::ERROR_POST_EXISTING_RESOURCE, [$path]);
+            $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
@@ -152,7 +163,22 @@ class Server
         }
 
         return $response;
-}
+	}
+
+    private function handleCreateDirectoryRequest(Response $response, string $path) : Response
+    {
+        $filesystem = $this->filesystem;
+        if ($filesystem->has($path) === true) {
+            $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
+            $response->getBody()->write($message);
+            $response = $response->withStatus(400);
+        } else {
+			$success = $filesystem->createDir($path);
+            $response = $response->withStatus($success ? 201 : 500);
+        }
+
+        return $response;
+	}
 
     private function handleDeleteRequest(Response $response, string $path, $contents) : Response
     {
@@ -162,17 +188,9 @@ class Server
             $mimetype = $filesystem->getMimetype($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-                $directoryContents = $filesystem->listContents($path, true);
+				$success = $filesystem->deleteDir($path);
 
-                if (count($directoryContents) > 0) {
-                    $status = 400;
-                    $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
-                    $response->getBody()->write($message);
-                } else {
-                    $success = $filesystem->deleteDir($path);
-
-                    $status = $success ? 204 : 500;
-                }
+				$status = $success ? 204 : 500;
             } else {
                 $success = $filesystem->delete($path);
 

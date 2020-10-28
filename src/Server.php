@@ -235,10 +235,9 @@ class Server
             $mimetype = $filesystem->getMimetype($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-                $listContents = $filesystem->listContents($path, true);
-                $contents = json_encode($listContents);
+                $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
-
+				$response = $response->withHeader("Content-type", "text/turtle");
                 $response = $response->withStatus(200);
             } else {
                 $contents = $filesystem->read($path);
@@ -252,4 +251,63 @@ class Server
 
         return $response;
     }
+	
+	private function listDirectoryAsTurtle($path) {
+        $filesystem = $this->filesystem;
+		$listContents = $filesystem->listContents($path);
+		
+		
+		$name = basename($path) . ":";
+
+		$turtle = array(
+			"$name" => array(
+				"a" => array("ldp:BasicContainer", "ldp:Container"),
+				"ldp:contains" => array()
+			)
+		);
+		
+		foreach ($listContents as $item) {
+			switch($item['type']) {
+				case "file":
+					$filename = "<" . $item['basename'] . ">";
+					$turtle[$filename] = array(
+						"a" => array("ldp:Resource")
+					);
+					$turtle[$name]['ldp:contains'][] = $filename;
+				break;
+				case "dir":
+					$filename = "<" . $item['basename'] . ">";
+					$turtle[$filename] = array(
+						"a" => array("ldp:BasicContainer", "ldp:Container")
+					);
+					$turtle[$name]['ldp:contains'][] = $filename;
+				break;
+				default:
+					throw new \Exception("Unknown type", 500);
+				break;
+			}
+		}
+
+		$container = <<< EOF
+@prefix : <#>.
+@prefix $name <>.
+@prefix ldp: <http://www.w3.org/ns/ldp#>.
+
+EOF;
+
+		foreach ($turtle as $name => $item) {
+			$container .= "\n$name\n";
+			$lines = [];
+			foreach ($item as $property => $values) {
+				if (sizeof($values)) {
+					$lines[] = "\t" . $property . " " . implode(", ", $values);
+				}
+			}
+			
+			$container .= implode(";\n", $lines);
+			$container .= ".\n";
+		}
+
+		return $container;
+	}
 }

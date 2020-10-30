@@ -18,7 +18,7 @@ class Server
     public const ERROR_PUT_NON_EXISTING_RESOURCE = self::ERROR_PATH_DOES_NOT_EXIST . '. Can not "PUT" non-existing resource. Use "POST" instead';
     public const ERROR_PUT_EXISTING_RESOURCE = self::ERROR_PATH_EXISTS . '. Can not "PUT" existing container.';
     public const ERROR_UNKNOWN_HTTP_METHOD = 'Unknown or unsupported HTTP METHOD "%s"';
-
+	public const ERROR_CAN_NOT_PARSE_FOR_PATCH = 'Could not parse the requested resource for patching';
     private const MIME_TYPE_DIRECTORY = 'directory';
     private const QUERY_PARAM_HTTP_METHOD = 'http-method';
 
@@ -54,10 +54,8 @@ class Server
         $method = $this->getRequestMethod($request);
 
         $contents = $request->getBody()->getContents();
-		$link = $request->getHeaderLine("Link");
-		// <http://www.w3.org/ns/ldp#BasicContainer>; rel="type"
 
-        return $this->handle($method, $path, $contents, $link);
+        return $this->handle($method, $path, $contents, $request);
     }
 
     ////////////////////////////// UTILITY METHODS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\
@@ -78,7 +76,7 @@ class Server
         return $method;
     }
 
-    private function handle(string $method, string $path, $contents, $link) : Response
+    private function handle(string $method, string $path, $contents, $request) : Response
     {
         $response = $this->response;
         $filesystem = $this->filesystem;
@@ -119,10 +117,16 @@ class Server
                 break;
 
             case 'PATCH':
-                $response->getBody()->write(self::ERROR_NOT_IMPLEMENTED_SPARQL);
-                $response = $response->withStatus(501);
-                break;
-
+				$contentType= $request->getHeaderLine("Content-Type");
+				switch($contentType) {
+					case "application/sparql-update":
+						$response = $this->handleSparqlUpdate($response, $path, $contents);
+					break;
+					default:
+						$response = $response->withStatus(400);
+					break;
+				}
+			break;
             case 'POST':
 				if ($filesystem->has($path) === true) {
 					$mimetype = $filesystem->getMimetype($path);
@@ -137,6 +141,7 @@ class Server
 				}
 			break;
             case 'PUT':
+				$link = $request->getHeaderLine("Link");
 				switch ($link) {
 					case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
 						$response = $this->handleCreateDirectoryRequest($response, $path);
@@ -158,6 +163,88 @@ class Server
 
         return $response;
     }
+
+	private function handleSparqlUpdate(Response $response, string $path, $contents) : Response
+	{
+        $filesystem = $this->filesystem;
+		$graph = new \EasyRdf_Graph();
+
+        if ($filesystem->has($path) === false) {
+			$data = '';
+		} else {
+			// read ttl data
+			$data = $filesystem->read($path);
+		}
+		try {
+			// Assuming this is in our native format, turtle
+			$graph->parse($data, "turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
+
+			// parse query in contents
+			if (preg_match_all("/((INSERT|DELETE).*{(.*)})+/", $contents, $matches, PREG_SET_ORDER)) {
+				foreach ($matches as $match) {
+					$command = $match[2];
+					$triples = $match[3];
+
+					// apply changes to ttl data
+					switch($command) {
+						case "INSERT":
+							// insert $triple(s) into $graph
+							$insertGraph = new \EasyRdf_Graph();
+							$insertGraph->parse($triples, "turtle");
+							$resources = $insertGraph->resources();
+							foreach ($resources as $resource) {
+								$properties = $resource->propertyUris();
+								foreach ($properties as $property) {
+									$values = $resource->all($property);
+									foreach ($values as $value) {
+										$graph->add($resource, $property, $value);
+									}
+								}
+							}
+						break;
+						case "DELETE":
+							// delete $triples from $graph
+							$deleteGraph = new \EasyRdf_Graph();
+							$deleteGraph->parse($triples, "turtle");
+							$resources = $deleteGraph->resources();
+							foreach ($resources as $resource) {
+								$properties = $resource->propertyUris();
+								foreach ($properties as $property) {
+									$values = $resource->all($property);
+									foreach ($values as $value) {
+										$graph->delete($resource, $property, $value);
+									}
+								}
+							}
+						break;
+						default:
+							throw new \Exception("Unimplemented SPARQL", 500);
+						break;
+					}
+				}
+			}
+
+			// Assuming this is in our native format, turtle
+			$output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
+			// write ttl data
+
+			if ($filesystem->has($path) === true) {
+				$success = $filesystem->update($path, $output);
+				$response = $response->withStatus($success ? 201 : 500);
+			} else {
+				$success = $filesystem->write($path, $output);
+				$response = $response->withStatus($success ? 201 : 500);
+			}
+		} catch (\EasyRdf_Exception $exception) {
+			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
+			$response = $response->withStatus(501);
+		} catch (\Exception $exception) {
+			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
+			$response = $response->withStatus(501);
+		}
+
+		return $response;
+	}
 
     private function handleCreateRequest(Response $response, string $path, $contents) : Response
     {
@@ -204,9 +291,16 @@ class Server
             $mimetype = $filesystem->getMimetype($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-				$success = $filesystem->deleteDir($path);
+				$directoryContents = $filesystem->listContents($path, true);
+                if (count($directoryContents) > 0) {
+                    $status = 400;
+                    $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
+                    $response->getBody()->write($message);
+                } else {
+                    $success = $filesystem->deleteDir($path);
 
-				$status = $success ? 204 : 500;
+                    $status = $success ? 204 : 500;
+                }
             } else {
                 $success = $filesystem->delete($path);
 
@@ -258,7 +352,6 @@ class Server
             } else {
                 $contents = $filesystem->read($path);
 				$mimetype = $filesystem->getMimetype($path);
-
                 if ($contents !== false) {
                     $response->getBody()->write($contents);
 					$response = $response->withHeader("Content-type", $mimetype);
@@ -278,6 +371,8 @@ class Server
         $filesystem = $this->filesystem;
 		$listContents = $filesystem->listContents($path);
 		
+		// CHECKME: maybe structure this data als RDF/PHP
+		// https://www.easyrdf.org/docs/rdf-formats-php
 		
 		$name = basename($path) . ":";
 

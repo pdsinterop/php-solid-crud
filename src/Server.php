@@ -175,6 +175,7 @@ class Server
 			// read ttl data
 			$data = $filesystem->read($path);
 		}
+
 		try {
 			// Assuming this is in our native format, turtle
 			$graph->parse($data, "turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
@@ -189,18 +190,7 @@ class Server
 					switch($command) {
 						case "INSERT":
 							// insert $triple(s) into $graph
-							$insertGraph = new \EasyRdf_Graph();
-							$insertGraph->parse($triples, "turtle");
-							$resources = $insertGraph->resources();
-							foreach ($resources as $resource) {
-								$properties = $resource->propertyUris();
-								foreach ($properties as $property) {
-									$values = $resource->all($property);
-									foreach ($values as $value) {
-										$graph->add($resource, $property, $value);
-									}
-								}
-							}
+							$graph->parse($triples, "turtle");
 						break;
 						case "DELETE":
 							// delete $triples from $graph
@@ -211,8 +201,15 @@ class Server
 								$properties = $resource->propertyUris();
 								foreach ($properties as $property) {
 									$values = $resource->all($property);
-									foreach ($values as $value) {
-										$graph->delete($resource, $property, $value);
+									if (!sizeof($values)) {
+										$graph->delete($resource, $property);
+									} else {
+										foreach ($values as $value) {
+											$count = $graph->delete($resource, $property, $value);
+											if ($count == 0) {
+												throw new \Exception("Could not delete a value", 500);
+											}
+										}
 									}
 								}
 							}
@@ -351,7 +348,11 @@ class Server
                 $response = $response->withStatus(200);
             } else {
                 $contents = $filesystem->read($path);
-				$mimetype = $filesystem->getMimetype($path);
+				if (preg_match('/.ttl$/', $path)) {
+					$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
+				} else {
+					$mimetype = $filesystem->getMimetype($path);
+				}
                 if ($contents !== false) {
                     $response->getBody()->write($contents);
 					$response = $response->withHeader("Content-type", $mimetype);

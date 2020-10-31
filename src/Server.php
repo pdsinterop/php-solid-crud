@@ -5,6 +5,7 @@ namespace Pdsinterop\Solid\Resources;
 use League\Flysystem\FilesystemInterface as Filesystem;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use WebSocket\Client;
 
 class Server
 {
@@ -98,14 +99,14 @@ class Server
         switch ($method) {
             case 'DELETE':
                 $response = $this->handleDeleteRequest($response, $path, $contents);
-                break;
-
+            break;
             case 'GET':
             case 'HEAD':
                 $response = $this->handleReadRequest($response, $path, $contents);
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
+					$response = $response->withHeader("updates-via", "http://localhost:8080/");
                 }
                 break;
 
@@ -232,6 +233,9 @@ class Server
 				$success = $filesystem->write($path, $output);
 				$response = $response->withStatus($success ? 201 : 500);
 			}
+			if ($success) {
+				$this->sendWebsocketUpdate($path);
+			}
 		} catch (\EasyRdf_Exception $exception) {
 			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
 			$response = $response->withStatus(501);
@@ -257,6 +261,7 @@ class Server
 			if ($success) {
 				$response = $response->withHeader("Location", $path);
 				$response = $response->withStatus(201);
+				$this->sendWebsocketUpdate($path);
 			} else {
 				$response = $response->withStatus(500);
 			}
@@ -264,7 +269,18 @@ class Server
 
         return $response;
 	}
-
+	private function parentPath($path) {
+		if ($path == "/") {
+			return "/";
+		}
+		$pathicles = explode("/", $path);
+		$end = array_pop($pathicles);
+		if ($end == "") {
+			array_pop($pathicles);
+		}
+		return implode("/", $pathicles) . "/";
+	}
+	
     private function handleCreateDirectoryRequest(Response $response, string $path) : Response
     {
         $filesystem = $this->filesystem;
@@ -275,11 +291,23 @@ class Server
         } else {
 			$success = $filesystem->createDir($path);
             $response = $response->withStatus($success ? 201 : 500);
+			if ($success) {
+				$this->sendWebsocketUpdate($path);
+			}
         }
 
         return $response;
 	}
 
+	private function sendWebsocketUpdate($path) {
+		$client = new \WebSocket\Client("ws://localhost:8080/");
+		$client->send("pub https://localhost$path\n");
+		while ($path != "/") {
+			$path = $this->parentPath($path);
+			$client->send("pub https://localhost$path\n");
+		}
+	}
+	
     private function handleDeleteRequest(Response $response, string $path, $contents) : Response
     {
         $filesystem = $this->filesystem;
@@ -295,12 +323,17 @@ class Server
                     $response->getBody()->write($message);
                 } else {
                     $success = $filesystem->deleteDir($path);
+					if ($success) {
+						$this->sendWebsocketUpdate($path);
+					}
 
                     $status = $success ? 204 : 500;
                 }
             } else {
                 $success = $filesystem->delete($path);
-
+				if ($success) {
+					$this->sendWebsocketUpdate($path);
+				}
                 $status = $success ? 204 : 500;
             }
 
@@ -325,6 +358,9 @@ class Server
         } else {
             $success = $filesystem->update($path, $contents);
             $response = $response->withStatus($success ? 201 : 500);
+			if ($success) {
+				$this->sendWebsocketUpdate($path);
+			}
         }
 
         return $response;

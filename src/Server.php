@@ -102,11 +102,12 @@ class Server
             break;
             case 'GET':
             case 'HEAD':
-                $response = $this->handleReadRequest($response, $path, $contents);
+				$mime = $this->getRequestedMimeType($request->getHeaderLine("Accept"));
+                $response = $this->handleReadRequest($response, $path, $contents, $mime);
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					$response = $response->withHeader("updates-via", "http://localhost:8080/");
+					$response = $response->withHeader("updates-via", "http://localhost:8080/"); // FIXME: url for websocket;
                 }
                 break;
 
@@ -366,16 +367,31 @@ class Server
         return $response;
     }
 
-    private function handleReadRequest(Response $response, string $path, $contents) : Response
-    {
+	private function getRequestedMimeType($accept) {		
+		// text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+		$mimes = explode(",", $accept);
+		foreach ($mimes as $mime) {
+			list($mimeInfo, $rest) = explode(";", $mime);
+			switch ($mimeInfo) {
+				case "text/turtle": // turtle
+				case "application/ld+json": //json
+				case "application/rdf+xml": //rdf
+					return $mimeInfo;
+				break;
+			}
+		}			
+		return '';
+	}
+    private function handleReadRequest(Response $response, string $path, $contents, $mime='') : Response
+    {		
         $filesystem = $this->filesystem;
-
-        if ($filesystem->has($path) === false) {
+		
+        if ($filesystem->asMime($mime)->has($path) === false) {
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(404);
         } else {
-            $mimetype = $filesystem->getMimetype($path);
+            $mimetype = $filesystem->asMime($mime)->getMimetype($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
                 $contents = $this->listDirectoryAsTurtle($path);
@@ -383,11 +399,11 @@ class Server
 				$response = $response->withHeader("Content-type", "text/turtle");
                 $response = $response->withStatus(200);
             } else {
-                $contents = $filesystem->read($path);
+                $contents = $filesystem->asMime($mime)->read($path);
 				if (preg_match('/.ttl$/', $path)) {
 					$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
 				} else {
-					$mimetype = $filesystem->getMimetype($path);
+					$mimetype = $filesystem->asMime($mime)->getMimetype($path);
 				}
                 if ($contents !== false) {
                     $response->getBody()->write($contents);

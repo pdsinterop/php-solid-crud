@@ -415,7 +415,7 @@ class Server
 
 		$turtle = array(
 			"$name" => array(
-				"a" => array("ldp:BasicContainer", "ldp:Container"),
+				"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),
 				"ldp:contains" => array()
 			)
 		);
@@ -432,7 +432,7 @@ class Server
 				case "dir":
 					$filename = "<" . $item['basename'] . ">";
 					$turtle[$filename] = array(
-						"a" => array("ldp:BasicContainer", "ldp:Container")
+						"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource")
 					);
 					$turtle[$name]['ldp:contains'][] = $filename;
 				break;

@@ -386,30 +386,36 @@ class Server
     {		
         $filesystem = $this->filesystem;
 		
-        if ($filesystem->asMime($mime)->has($path) === false) {
+        if ($filesystem->has($path) === false) {
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(404);
         } else {
-            $mimetype = $filesystem->asMime($mime)->getMimetype($path);
-
+			$mimetype = $filesystem->getMimetype($path);
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
 				$response = $response->withHeader("Content-type", "text/turtle");
                 $response = $response->withStatus(200);
             } else {
-                $contents = $filesystem->asMime($mime)->read($path);
-				if (preg_match('/.ttl$/', $path)) {
-					$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
-				} else {
+				if ($filesystem->asMime($mime)->has($path)) {
 					$mimetype = $filesystem->asMime($mime)->getMimetype($path);
+					$contents = $filesystem->asMime($mime)->read($path);
+					if (preg_match('/.ttl$/', $path)) {
+						$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
+					} else {
+						$mimetype = $filesystem->asMime($mime)->getMimetype($path);
+					}
+					if ($contents !== false) {
+						$response->getBody()->write($contents);
+						$response = $response->withHeader("Content-type", $mimetype);
+						$response = $response->withStatus(200);
+					}
+				} else {
+					$message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
+					$response->getBody()->write($message);
+					$response = $response->withStatus(404);
 				}
-                if ($contents !== false) {
-                    $response->getBody()->write($contents);
-					$response = $response->withHeader("Content-type", $mimetype);
-                    $response = $response->withStatus(200);
-                }
             }
         }
 
@@ -446,7 +452,8 @@ class Server
 					$turtle[$name]['ldp:contains'][] = $filename;
 				break;
 				case "dir":
-					$filename = "<" . $item['basename'] . ">";
+					// FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.
+					$filename = "<" . $item['basename'] . "/>"; 
 					$turtle[$filename] = array(
 						"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource")
 					);

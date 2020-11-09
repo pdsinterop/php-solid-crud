@@ -37,6 +37,8 @@ class Server
     private $filesystem;
     /** @var Response */
     private $response;
+	private $pubsub;
+	private $baseUrl;
 
     //////////////////////////////// PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
@@ -44,6 +46,8 @@ class Server
     {
         $this->filesystem = $filesystem;
         $this->response = $response;
+		$this->pubsub = '';
+		$this->baseUrl = '';
     }
 
     final public function respondToRequest(Request $request) : Response
@@ -82,6 +86,9 @@ class Server
         $response = $this->response;
         $filesystem = $this->filesystem;
 
+		$this->pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/");
+		$this->baseUrl = "https://" . $request->getServerParams()["SERVER_NAME"];
+
         // Lets assume the worst...
         $response = $response->withStatus(500);
 
@@ -108,8 +115,7 @@ class Server
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
 					// FIXME: pubsub info should be passed to this instead
-					$pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/"); 
-					$response = $response->withHeader("updates-via", $pubsub);
+					$response = $response->withHeader("updates-via", $this->pubsub);
                 }
                 break;
 
@@ -303,12 +309,15 @@ class Server
 	}
 
 	private function sendWebsocketUpdate($path) {
-		$baseUrl = "https://" . $request->getServerParams()["SERVER_NAME"];
-		$pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/");
+		$pubsub = $this->pubsub;
 		$pubsub = str_replace("https://", "ws://", $pubsub);
 		$pubsub = str_replace("http://", "ws://", $pubsub);
+
+		$baseUrl = $this->baseUrl;
+
 		$client = new \WebSocket\Client($pubsub);
 		$client->send("pub $baseUrl$path\n");
+
 		while ($path != "/") {
 			$path = $this->parentPath($path);
 			$client->send("pub $baseUrl$path\n");

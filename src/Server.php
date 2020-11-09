@@ -107,7 +107,9 @@ class Server
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					$response = $response->withHeader("updates-via", "http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/"); // FIXME: url for websocket;
+					// FIXME: pubsub info should be passed to this instead
+					$pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/"); 
+					$response = $response->withHeader("updates-via", $pubsub);
                 }
                 break;
 

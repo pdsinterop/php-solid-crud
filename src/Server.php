@@ -303,11 +303,15 @@ class Server
 	}
 
 	private function sendWebsocketUpdate($path) {
-		$client = new \WebSocket\Client("ws://localhost:8080/");
-		$client->send("pub https://localhost$path\n");
+		$baseUrl = "https://" . $request->getServerParams()["SERVER_NAME"];
+		$pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/");
+		$pubsub = str_replace("https://", "ws://", $pubsub);
+		$pubsub = str_replace("http://", "ws://", $pubsub);
+		$client = new \WebSocket\Client($pubsub);
+		$client->send("pub $baseUrl$path\n");
 		while ($path != "/") {
 			$path = $this->parentPath($path);
-			$client->send("pub https://localhost$path\n");
+			$client->send("pub $baseUrl$path\n");
 		}
 	}
 	

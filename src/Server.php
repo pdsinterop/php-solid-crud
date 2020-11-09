@@ -107,7 +107,7 @@ class Server
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					$response = $response->withHeader("updates-via", "http://localhost:8080/"); // FIXME: url for websocket;
+					$response = $response->withHeader("updates-via", "http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/"); // FIXME: url for websocket;
                 }
                 break;
 

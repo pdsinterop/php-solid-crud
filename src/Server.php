@@ -59,7 +59,7 @@ class Server
         $method = $this->getRequestMethod($request);
 
         $contents = $request->getBody()->getContents();
-
+		
         return $this->handle($method, $path, $contents, $request);
     }
 
@@ -81,14 +81,25 @@ class Server
         return $method;
     }
 
+	public function setPubSubUrl($url) {
+		$this->pubsub = $url;
+	}
+	public function setBaseUrl($url) {
+		$this->baseUrl = $url;
+	}
+
     private function handle(string $method, string $path, $contents, $request) : Response
     {
         $response = $this->response;
         $filesystem = $this->filesystem;
 
-		$this->pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/");
-		$this->baseUrl = "https://" . $request->getServerParams()["SERVER_NAME"];
-
+		if (!$this->pubsub) {
+			// FIXME: maybe just throw an exception if we don't have this. It is impossible for us to know, so it needs to be passed to us.
+			$this->pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/");
+		}
+		if (!$this->baseUrl) {
+			$this->baseUrl = "https://" . $request->getServerParams()["SERVER_NAME"];
+		}
         // Lets assume the worst...
         $response = $response->withStatus(500);
 
@@ -114,7 +125,7 @@ class Server
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					// FIXME: pubsub info should be passed to this instead
+					$response = $response->withStatus("204"); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
 					$response = $response->withHeader("updates-via", $this->pubsub);
                 }
                 break;
@@ -268,7 +279,7 @@ class Server
             // @FIXME: Handle error scenarios correctly (for instance trying to create a file underneath another file)
             $success = $filesystem->write($path, $contents);
 			if ($success) {
-				$response = $response->withHeader("Location", $path);
+				$response = $response->withHeader("Location", $this->baseUrl . $path);
 				$response = $response->withStatus(201);
 				$this->sendWebsocketUpdate($path);
 			} else {
@@ -310,6 +321,8 @@ class Server
 
 	private function sendWebsocketUpdate($path) {
 		$pubsub = $this->pubsub;
+		$pubsub = getenv('PUBSUB_URL') ?: ("http://pubsub:8080/"); // FIXME: the 'internal' pubsub URL is not always the same as the 'external';
+		
 		$pubsub = str_replace("https://", "ws://", $pubsub);
 		$pubsub = str_replace("http://", "ws://", $pubsub);
 
@@ -398,10 +411,14 @@ class Server
 		return '';
 	}
     private function handleReadRequest(Response $response, string $path, $contents, $mime='') : Response
-    {		
-        $filesystem = $this->filesystem;
-		
-        if ($filesystem->has($path) === false) {
+    {
+		$filesystem = $this->filesystem;
+		if ($path == "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+			$contents = $this->listDirectoryAsTurtle($path);
+			$response->getBody()->write($contents);
+			$response = $response->withHeader("Content-type", "text/turtle");
+			$response = $response->withStatus(200);
+		} else if ($filesystem->has($path) === false) {			
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(404);
@@ -443,8 +460,11 @@ class Server
 
 	private function listDirectoryAsTurtle($path) {
         $filesystem = $this->filesystem;
-		$listContents = $filesystem->listContents($path);
-		
+		if ($path == "/") {
+			$listContents = $filesystem->listContents(".");// FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+		} else {
+			$listContents = $filesystem->listContents($path);
+		}
 		// CHECKME: maybe structure this data als RDF/PHP
 		// https://www.easyrdf.org/docs/rdf-formats-php
 		

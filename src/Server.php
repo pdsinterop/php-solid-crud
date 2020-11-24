@@ -152,7 +152,26 @@ class Server
 				if ($filesystem->has($path) === true) {
 					$mimetype = $filesystem->getMimetype($path);
 					if ($mimetype === self::MIME_TYPE_DIRECTORY) {
+						$contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
+
 						$filename = $this->guid();
+						// FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
+						switch ($contentType) {
+							case "text/plain":
+								$filename .= ".txt";
+							break;
+							case "text/turtle":
+								$filename .= ".ttl";
+							break;
+							case "text/html":
+								$filename .= ".html";
+							break;
+							case "application/json":
+							case "application/ld+json":
+								$filename .= ".json";
+							break;
+						}
+
 						$response = $this->handleCreateRequest($response, $path . $filename, $contents);
 					} else {
 						$response = $this->handleUpdateRequest($response, $path, $contents);

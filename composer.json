@@ -26,7 +26,7 @@
     "laminas/laminas-diactoros": "^2.4",
     "league/flysystem": "^1.0",
     "mjrider/flysystem-factory": "^0.5",
-    "pdsinterop/flysystem-rdf": "dev-master",
+    "pdsinterop/flysystem-rdf": "dev-tested",
     "psr/http-factory": "^1.0",
     "psr/http-message": "^1.0",
     "textalk/websocket": "^1.4"

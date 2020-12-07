@@ -93,13 +93,6 @@ class Server
         $response = $this->response;
         $filesystem = $this->filesystem;
 
-		if (!$this->pubsub) {
-			// FIXME: maybe just throw an exception if we don't have this. It is impossible for us to know, so it needs to be passed to us.
-			$this->pubsub = getenv('PUBSUB_URL') ?: ("http://" . $request->getServerParams()["SERVER_NAME"] . ":8080/");
-		}
-		if (!$this->baseUrl) {
-			$this->baseUrl = "https://" . $request->getServerParams()["SERVER_NAME"];
-		}
         // Lets assume the worst...
         $response = $response->withStatus(500);
 
@@ -126,7 +119,9 @@ class Server
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
 					$response = $response->withStatus("204"); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
-					$response = $response->withHeader("updates-via", $this->pubsub);
+					if ($this->pubsub) {
+						$response = $response->withHeader("updates-via", $this->pubsub);
+					}
                 }
                 break;
 
@@ -340,7 +335,9 @@ class Server
 
 	private function sendWebsocketUpdate($path) {
 		$pubsub = $this->pubsub;
-		$pubsub = getenv('PUBSUB_URL') ?: ("http://pubsub:8080/"); // FIXME: the 'internal' pubsub URL is not always the same as the 'external';
+		if (!$pubsub) {
+			return; // no pubsub server available, don't even try;
+		}
 		
 		$pubsub = str_replace("https://", "ws://", $pubsub);
 		$pubsub = str_replace("http://", "ws://", $pubsub);

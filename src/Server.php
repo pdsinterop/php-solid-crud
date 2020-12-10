@@ -451,6 +451,8 @@ class Server
 					$contents = $filesystem->asMime($mime)->read($path);
 					if (preg_match('/.ttl$/', $path)) {
 						$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
+					} elseif (preg_match('/.acl$/', $path)) {
+						$mimetype = "text/turtle"; // FIXME: teach flysystem that .acl files also want text/turtle
 					} else {
 						$mimetype = $filesystem->asMime($mime)->getMimetype($path);
 					}

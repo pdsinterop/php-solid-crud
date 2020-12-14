@@ -50,6 +50,13 @@ class Server
 		$this->baseUrl = '';
     }
 
+	final public function getFilesystem() {
+		return $this->filesystem;
+	}
+	final public function getResponse() {
+		return $this->response;
+	}
+
     final public function respondToRequest(Request $request) : Response
     {
         $path = $request->getUri()->getPath();

@@ -48,6 +48,7 @@ class Server
         $this->response = $response;
 		$this->pubsub = '';
 		$this->baseUrl = '';
+		$this->basePath = '';
     }
 
 	final public function getFilesystem() {
@@ -60,8 +61,11 @@ class Server
     final public function respondToRequest(Request $request) : Response
     {
         $path = $request->getUri()->getPath();
+		if ($this->basePath) {
+			$path = str_replace($this->basePath, "", $path);
+		}
 
-        // @FIXME: The path can also come from a 'Slug' header
+		// @FIXME: The path can also come from a 'Slug' header
 
         $method = $this->getRequestMethod($request);
 
@@ -93,6 +97,10 @@ class Server
 	}
 	public function setBaseUrl($url) {
 		$this->baseUrl = $url;
+
+		$uri = $this->baseUrl;
+		$serverRequest = new \Laminas\Diactoros\ServerRequest(array(),array(), $this->baseUrl);
+		$this->basePath = $serverRequest->getUri()->getPath();
 	}
 
     private function handle(string $method, string $path, $contents, $request) : Response

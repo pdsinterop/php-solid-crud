@@ -231,7 +231,7 @@ class Server
 			$graph->parse($data, "turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
 
 			// parse query in contents
-			if (preg_match_all("/((INSERT|DELETE).*{(.*)})+/", $contents, $matches, PREG_SET_ORDER)) {
+			if (preg_match_all("/((INSERT|DELETE).*{(.*)})+/s", $contents, $matches, PREG_SET_ORDER)) {
 				foreach ($matches as $match) {
 					$command = $match[2];
 					$triples = $match[3];

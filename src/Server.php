@@ -228,7 +228,7 @@ class Server
 
 		try {
 			// Assuming this is in our native format, turtle
-			$graph->parse($data, "turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
+			$graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $path); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
 
 			// parse query in contents
 			if (preg_match_all("/((INSERT|DELETE).*{(.*)})+/s", $contents, $matches, PREG_SET_ORDER)) {

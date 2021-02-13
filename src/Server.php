@@ -363,7 +363,11 @@ class Server
 
 		$baseUrl = $this->baseUrl;
 
-		$client = new \WebSocket\Client($pubsub);
+		$client = new \WebSocket\Client($pubsub, array(
+			'headers' => array(
+				'Sec-WebSocket-Protocol' => 'solid-0.1'
+			)
+		));
 		$client->send("pub $baseUrl$path\n");
 
 		while ($path != "/") {

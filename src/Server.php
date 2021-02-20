@@ -543,7 +543,7 @@ class Server
 
 		$container = <<< EOF
 @prefix : <#>.
-@prefix $name: <>.
+@prefix $name <>.
 @prefix ldp: <http://www.w3.org/ns/ldp#>.
 
 EOF;

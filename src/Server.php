@@ -510,7 +510,10 @@ class Server
 		// https://www.easyrdf.org/docs/rdf-formats-php
 		
 		$name = basename($path) . ":";
-
+		// turtle syntax doesn't allow labels that start with a number, so prefix it if it does;
+		if (preg_match("/^\d/", $name)) {
+			$name = "container-" . $name;
+		}
 		$turtle = array(
 			"$name" => array(
 				"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),

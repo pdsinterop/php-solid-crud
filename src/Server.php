@@ -243,14 +243,14 @@ class Server
 					// apply changes to ttl data
 					switch($command) {
 						case "INSERT":
-							// FIXME: The triples here are in sparql format, not in turtle;
 							// insert $triple(s) into $graph
-							$graph->parse($triples);
+							$graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+
 						break;
 						case "DELETE":
 							// delete $triples from $graph
 							$deleteGraph = new \EasyRdf_Graph();
-							$deleteGraph->parse($triples);
+							$deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 							$resources = $deleteGraph->resources();
 							foreach ($resources as $resource) {
 								$properties = $resource->propertyUris();

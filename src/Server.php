@@ -214,18 +214,6 @@ class Server
         return $response;
     }
 
-	private function sparqlTriplesToTurtleTriples($triples) {
-		// In SparQL syntax, the triple may or may not end with a .
-		// so if it doesn't parse with easyRDF as is, add the ending '.'
-		$graph = new \EasyRdf_Graph();
-		try {
-			$graph->parse($triples);
-			return $triples;
-		} catch (\Exception $e) {
-			return $triples . ".";
-		}
-	}
-
 	private function handleSparqlUpdate(Response $response, string $path, $contents) : Response
 	{
         $filesystem = $this->filesystem;
@@ -251,18 +239,18 @@ class Server
 				foreach ($matches as $match) {
 					$command = $match[2];
 					$triples = $match[3];
-					$triples = $this->sparqlTriplesToTurtleTriples($triples);
 
 					// apply changes to ttl data
 					switch($command) {
 						case "INSERT":
+							// FIXME: The triples here are in sparql format, not in turtle;
 							// insert $triple(s) into $graph
-							$graph->parse($triples, "turtle");
+							$graph->parse($triples);
 						break;
 						case "DELETE":
 							// delete $triples from $graph
 							$deleteGraph = new \EasyRdf_Graph();
-							$deleteGraph->parse($triples, "turtle");
+							$deleteGraph->parse($triples);
 							$resources = $deleteGraph->resources();
 							foreach ($resources as $resource) {
 								$properties = $resource->propertyUris();

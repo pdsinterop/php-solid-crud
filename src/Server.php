@@ -113,9 +113,9 @@ class Server
 
         // Set Accept, Allow, and CORS headers
         $response = $response
-            ->withHeader('Access-Control-Allow-Origin', '*')
-            ->withHeader('Access-Control-Allow-Credentials','true')
-            ->withHeader('Access-Control-Allow-Headers', 'Accept')
+            // ->withHeader('Access-Control-Allow-Origin', '*')
+            // ->withHeader('Access-Control-Allow-Credentials','true')
+            // ->withHeader('Access-Control-Allow-Headers', '*, authorization, accept, content-type')
             // @FIXME: Add correct headers to resources (for instance allow DELETE on a GET resource)
             // ->withAddedHeader('Accept-Patch', 'text/ldpatch')
             // ->withAddedHeader('Accept-Post', 'text/turtle, application/ld+json, image/bmp, image/jpeg')

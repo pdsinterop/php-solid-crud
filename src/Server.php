@@ -170,8 +170,12 @@ class Server
 				if ($pathExists === true) {
 					if ($mimetype === self::MIME_TYPE_DIRECTORY) {
 						$contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
-
-						$filename = $this->guid();
+						$slug = $request->getHeaderLine("Slug");
+						if ($slug) {
+							$filename = $slug;
+						} else {
+							$filename = $this->guid();
+						}						
 						// FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
 						// FIXME: if no content type was passed, we should reject the request according to the spec;
 						

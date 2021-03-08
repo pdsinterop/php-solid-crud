@@ -151,6 +151,7 @@ class Server
 				$contentType= $request->getHeaderLine("Content-Type");
 				switch($contentType) {
 					case "application/sparql-update":
+                    case "application/sparql-update-single-match":
 						$response = $this->handleSparqlUpdate($response, $path, $contents);
 					break;
 					default:

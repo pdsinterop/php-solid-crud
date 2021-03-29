@@ -453,7 +453,8 @@ class Server
 		// text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
 		$mimes = explode(",", $accept);
 		foreach ($mimes as $mime) {
-			list($mimeInfo, $rest) = explode(";", $mime);
+                        $parts = explode(";", $mime);
+                        $mimeInfo = $parts[0];
 			switch ($mimeInfo) {
 				case "text/turtle": // turtle
 				case "application/ld+json": //json

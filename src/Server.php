@@ -64,7 +64,8 @@ class Server
 		if ($this->basePath) {
 			$path = str_replace($this->basePath, "", $path);
 		}
-
+	$path = rawurldecode($path);
+	
 		// @FIXME: The path can also come from a 'Slug' header
 
         $method = $this->getRequestMethod($request);
@@ -531,7 +532,7 @@ class Server
 			$name = "container-" . $name;
 		}
 		$turtle = array(
-			"$name" => array(
+			"<>" => array(
 				"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),
 				"ldp:contains" => array()
 			)
@@ -540,19 +541,19 @@ class Server
 		foreach ($listContents as $item) {
 			switch($item['type']) {
 				case "file":
-					$filename = "<" . $item['basename'] . ">";
+					$filename = "<" . rawurlencode($item['basename']) . ">";
 					$turtle[$filename] = array(
 						"a" => array("ldp:Resource")
 					);
-					$turtle[$name]['ldp:contains'][] = $filename;
+					$turtle["<>"]['ldp:contains'][] = $filename;
 				break;
 				case "dir":
 					// FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.
-					$filename = "<" . $item['basename'] . "/>"; 
+					$filename = "<" . rawurlencode($item['basename']) . "/>"; 
 					$turtle[$filename] = array(
 						"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource")
 					);
-					$turtle[$name]['ldp:contains'][] = $filename;
+					$turtle["<>"]['ldp:contains'][] = $filename;
 				break;
 				default:
 					throw new \Exception("Unknown type", 500);
@@ -562,7 +563,6 @@ class Server
 
 		$container = <<< EOF
 @prefix : <#>.
-@prefix $name <>.
 @prefix ldp: <http://www.w3.org/ns/ldp#>.
 
 EOF;

@@ -248,7 +248,7 @@ class Server
 			// FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
 			// parse query in contents
-			if (preg_match_all("/((INSERT|DELETE).*{(.*)})+/s", $contents, $matches, PREG_SET_ORDER)) {
+			if (preg_match_all("/((INSERT|DELETE).*{(.*)})+/m", $contents, $matches, PREG_SET_ORDER)) {
 				foreach ($matches as $match) {
 					$command = $match[2];
 					$triples = $match[3];

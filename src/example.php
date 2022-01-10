@@ -175,12 +175,16 @@ __halt_compiler();<!doctype html>
 
                     output.classList = `status-${(''+response.status)[0]}`
 
+                    const html = text.replace(/[\u00A0-\u9999<>&]/g, function (i) {
+                        return '&#' + i.charCodeAt(0) + ';';
+                    });
+
                     output.innerHTML += `
                       <p>
                         <code>${response.status}</code> ${response.statusText}
                       </p>
                       <pre><code>${headers}</code></pre>
-                      <pre class="${text?'':'empty'}"><code>${text}</code></pre>
+                      <pre class="${text?'':'empty'}"><code>${html}</code></pre>
                     `
                 }).catch(error => {
                     output.classList = 'status-error'

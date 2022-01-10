@@ -25,7 +25,18 @@ The used Request and Response objects are compliant with [the PHP Standards Reco
 ## Table of Contents
 
 <!-- toc -->
-<!-- markdown-toc --bullets='-' -i -- README.md -->
+
+- [Background](#background)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Creating the filesystem](#creating-the-filesystem)
+  - [Creating the server](#creating-the-server)
+  - [Handling a request](#handling-a-request)
+  - [Changing a request](#changing-a-request)
+  - [Full Example](#full-example)
+- [Contributing](#contributing)
+- [License](#license)
+
 <!-- tocstop -->
 
 ## Background

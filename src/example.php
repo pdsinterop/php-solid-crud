@@ -1,34 +1,53 @@
 <?php
 
+// =============================================================================
+// This part of the code should usually be handled by a bootstrap or framework
+// -----------------------------------------------------------------------------
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-// =============================================================================
-// The majority of this part of the code is usually handled by your framework
-// -----------------------------------------------------------------------------
 session_start();
 ob_start();
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+// -----------------------------------------------------------------------------
+// Create Request and Response objects
+// -----------------------------------------------------------------------------
 $request = \Laminas\Diactoros\ServerRequestFactory::fromGlobals(
     $_SERVER, $_GET, $_POST, $_COOKIE, $_FILES
 );
 $response = new \Laminas\Diactoros\Response();
 
-$adapter = new \League\Flysystem\Adapter\Local(__DIR__ . '/fixtures');
-$filesystem = new \League\Flysystem\Filesystem($adapter);
+// -----------------------------------------------------------------------------
+// Create the Filesystem
+// -----------------------------------------------------------------------------
+$formats = new \Pdsinterop\Rdf\Formats();
+
+$graph = new \EasyRdf_Graph();
+
+$serverUri = '';
+if (isset($serverParams['SERVER_NAME'])) {
+    $serverUri = "http://" . $serverParams['SERVER_NAME'] . $serverParams['REQUEST_URI'] ?? '';
+}
+
+$rdfAdapter = new \Pdsinterop\Rdf\Flysystem\Adapter\Rdf(
+    new \League\Flysystem\Adapter\Local(__DIR__ . '/../tests/fixtures'),
+    $graph,
+    $formats,
+    $serverUri
+);
+
+$filesystem = new \League\Flysystem\Filesystem($rdfAdapter);
+
+$filesystem->addPlugin(new \Pdsinterop\Rdf\Flysystem\Plugin\AsMime($formats));
+$filesystem->addPlugin(new \Pdsinterop\Rdf\Flysystem\Plugin\ReadRdf($graph));
 // =============================================================================
 
 
 // =============================================================================
 // Create the Resource CRUD Server
 // -----------------------------------------------------------------------------
-$plugin = new \Pdsinterop\Rdf\Flysystem\Plugin\ReadRdf(new \EasyRdf_Graph());
-
-$filesystem->addPlugin($plugin);
-
 $server = new \Pdsinterop\Solid\Resources\Server($filesystem, $response);
 // =============================================================================
 
@@ -42,12 +61,13 @@ $target = $request->getMethod() . $request->getRequestTarget();
 
 if (strpos($path, '/data/') === 0) {
     // Route starts with our data-source prefix
+    $request = $request->withUri($request->getUri()->withPath(substr($path, 5)));
     $response = $server->respondToRequest($request);
 } elseif ($target === 'GET/') {
     $response->getBody()->write(getHomepage());
 } else {
     $response = $response->withStatus(404);
-    $response->getBody()->write('<h1>404</h1><p>Path "' . $path . '" does not exist.</p>');
+    $response->getBody()->write("<h1>404</h1><p>Path '$path' does not exist.</p>");
 }
 // =============================================================================
 
@@ -78,9 +98,10 @@ function getHomepage() : string
 __halt_compiler();<!doctype html>
 <html lang="en">
 <meta charset="UTF-8">
+<title>Example Solid Resource Server</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' stroke='%23000' stroke-width='0' viewBox='-5 -5 110 110'><circle cx='50' cy='50' r='51' fill='%237C4DFF'/><circle cx='50' cy='50' r='34' fill='%23F2E205'/><path fill='%23FFF' stroke-width='2' d='M-1 50h16a38 35.5 0 0027.5 34.45V68.7A20 20 0 0150 30.2a20 20 0 017.5 38.5v15.75A38 35.5 0 0085 50h15A1 1 0 010 50z'/></svg>">
 
-<h1><title>Example Solid Resource Server</title></h1>
+<h1>Example Solid Resource Server</h1>
 
 <section>
     <p>This is an example of how to implement the PDS Interop Solid-CRUD package.</p>
@@ -137,7 +158,6 @@ __halt_compiler();<!doctype html>
     legend { font-weight: bold; }
     pre { border: 1px solid; padding: 1em; white-space: pre-wrap; word-break: keep-all }
     textarea {height: 10em; width: 100%;}
-    title { display:inline; }
 
     .empty { opacity: 0.1; background: lightgray; }
     .status-2 p {background: green}

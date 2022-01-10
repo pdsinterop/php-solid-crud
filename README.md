@@ -13,8 +13,11 @@ _Solid HTTPS REST API specification compliant implementation for handling Resour
 
 The Solid specification for reading and writing resources in Solid Server (or
 "Solid Pod") extends the [Linked Data Platform specification][w3c-spec-ldp]. 
-This project provides a simple REST API for CRUD operations on resources and
-containers, that adheres to the [Solid HTTPS REST API Spec][solid-spec-api-rest]
+
+This project provides a single-class API for CRUD operations on resources and
+containers, that adheres to the [Solid HTTPS REST API Spec][solid-spec-api-rest].
+
+The used Request and Response objects are compliant with [the PHP Standards Recommendations for HTTP Message Interface (PSR-7)](https://www.php-fig.org/psr/psr-7/) to make integration into existing projects and frameworks easier.
 
 [w3c-spec-ldp]: https://www.w3.org/TR/ldp/
 [solid-spec-api-rest]: https://github.com/solid/solid-spec/blob/master/api-rest.md
@@ -25,23 +28,144 @@ containers, that adheres to the [Solid HTTPS REST API Spec][solid-spec-api-rest]
 <!-- markdown-toc --bullets='-' -i -- README.md -->
 <!-- tocstop -->
 
+## Background
+
+This project is part of the PHP stack of projects by PDS Interop. It is used by
+both the Solid-Nextcloud app and the standalone PHP Solid server.
+
+As the functionality seemed useful for other projects, it was implemented as a
+separate package.
+
 ## Installation
 
+The advised install method is through composer:
+
+```sh
+composer require pdsinterop/solid-crud
 ```
-@FIXME: Add required code block illustrating how to install
-```
+
+PHP version 7.3 and higher is supported. The [`mbstring`](https://www.php.net/manual/en/book.mbstring.php)
+extension needs to be enabled in order for this package to work.
 
 ## Usage
 
-```sh
-@FIXME: Add required code block illustrating how to use
+This package provides a `Pdsinterop\Solid\Resources\Server` class which, when provided with a PSR-7 compliant Request object, will return a PSR-7 compliant Response object.
+
+To work, the server needs an object that implements `League\Flysystem\FilesystemInterface`
+and an object that implements `Psr\Http\Message\ResponseInterface`
+
+The concrete Filesystem object _must_ be provided with the Rdf adapter and the AsMime plugin provided by [`pdsinterop/flysystem-rdf`](https://github.com/pdsinterop/flysystem-rdf). Depending on your own use-cases, it can also be provided with the ReadRdf plugin (provided by the same package).
+
+### Creating the filesystem
+
+This is an example of how to create a filesystem object, using the [local adapter](https://flysystem.thephpleague.com/v1/docs/adapter/local/)
+
+```php
+$formats = new \Pdsinterop\Rdf\Formats();
+
+$rdfAdapter = new \Pdsinterop\Rdf\Flysystem\Adapter\Rdf(
+    new \League\Flysystem\Adapter\Local('/path/to/data'),
+    new \EasyRdf_Graph(),
+    $formats,
+    'https://example.com/'
+);
+
+$filesystem = new \League\Flysystem\Filesystem($rdfAdapter);
+
+$filesystem->addPlugin(new \Pdsinterop\Rdf\Flysystem\Plugin\AsMime($formats));
+
 ```
 
-## API
+for more details on using the filesystem, please see the documentation at `pdsinterop/flysystem-rdf`.
 
-    @TODO: Add docs for the REST API
+### Creating the server
 
-## Contribute
+with the filesystem, the server can be created, together with a response object. For this example we are using the [Laminas Diactoros](https://github.com/laminas/laminas-diactoros/) `Response` object is used, but any PSR-7 compliant response object will do:
+
+```php
+$server = new \Pdsinterop\Solid\Resources\Server($filesystem, new \Laminas\Diactoros\Response());
+```
+
+### Handling a request
+
+Once the server is created it can be provided a request to handle. The Request object in this example is created by a PSR-17 compliant ServerRequest Factory (also provided by the Laminas Diactoros package) but any PSR-7 compliant request object will work:
+
+```php
+$request = \Laminas\Diactoros\ServerRequestFactory::fromGlobals(
+    $_SERVER, $_GET, $_POST, $_COOKIE, $_FILES
+);
+
+$response = $server->respondToRequest($request);
+```
+
+This will populate and return the Response object the server was provided with for further handling by your application or framework.
+
+### Changing a request
+
+If there is a difference between the request you receive and that which the server object is expected to handle, the request object should be altered before being passed to the server.
+
+For instance to change the requested path:
+
+```php
+    $request = $request->withUri($request->getUri()->withPath($changedPath));
+```
+
+or the request method:
+
+```php
+    $request = $request->withMethod('PUT');
+```
+
+### Full Example
+
+Putting all of this together would give us something like this:
+
+```php
+<?php
+
+/*/ Create the filesystem /*/
+$formats = new \Pdsinterop\Rdf\Formats();
+
+$rdfAdapter = new \Pdsinterop\Rdf\Flysystem\Adapter\Rdf(
+    new \League\Flysystem\Adapter\Local('/path/to/data'),
+    new \EasyRdf_Graph(),
+    $formats,
+    'https://example.com/'
+);
+
+$filesystem = new \League\Flysystem\Filesystem($rdfAdapter);
+
+$filesystem->addPlugin(new \Pdsinterop\Rdf\Flysystem\Plugin\AsMime($formats));
+
+/*/ Create the server /*/
+$server = new \Pdsinterop\Solid\Resources\Server($filesystem, new \Laminas\Diactoros\Response());
+
+/*/ Create a PSR-7 Request object /*/
+$request = \Laminas\Diactoros\ServerRequestFactory::fromGlobals(
+    $_SERVER, $_GET, $_POST, $_COOKIE, $_FILES
+);
+
+/*/ Remove the `/data` prefix from the path /*/
+$changedPath = substr($request->getUri()->getPath(), 5)));
+$request = $request->withUri($request->getUri()->withPath($changedPath));
+
+/*/ Handle the request /*/
+$response = $server->respondToRequest($request);
+```
+
+A fully working example has been provided at [`src/example.php`](src/example.php).
+
+To try out this dummy server, run: 
+
+```sh
+php -S localhost:${PORT:-8080} -t ./src/ ./src/example.php
+```
+
+or have composer run it for you by calling: `composer run dev:example`
+
+The server is expected to run on HTTPS, but it can be forced to accept
+
+## Contributing
 
 Questions or feedback can be given by [opening an issue on GitHub][issues-link].
 

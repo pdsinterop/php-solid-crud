@@ -28,7 +28,7 @@
     "textalk/websocket": "^1.5"
   },
   "scripts": {
-    "dev:example": "php -S localhost:${PORT:-8080} -t ./tests/ ./tests/example.php",
+    "dev:example": "php -S localhost:${PORT:-8080} -t ./src/ ./src/example.php",
     "tests:unit": "phpunit ./tests/unit"
   },
   "scripts-descriptions": {

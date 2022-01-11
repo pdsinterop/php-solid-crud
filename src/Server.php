@@ -167,7 +167,7 @@ class Server
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					$response = $response->withStatus("204"); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
+					$response = $response->withStatus(204); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
 					if ($this->pubsub) {
 						$response = $response->withHeader("updates-via", $this->pubsub);
 					}
@@ -177,7 +177,7 @@ class Server
             case 'OPTIONS':
                 $response = $response
                     ->withHeader('Vary', 'Accept')
-                    ->withStatus('204')
+                    ->withStatus(204)
                 ;
                 break;
 
@@ -204,7 +204,7 @@ class Server
 					$mimetype = self::MIME_TYPE_DIRECTORY;
 				}
 				if ($pathExists === true) {
-					if ($mimetype === self::MIME_TYPE_DIRECTORY) {
+					if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
 						$contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
 						$slug = $request->getHeaderLine("Slug");
 						if ($slug) {
@@ -360,7 +360,7 @@ class Server
         } else {
             $success = false;
 
-            set_error_handler(static function($severity, $message, $filename, $line) {
+            set_error_handler(static function ($severity, $message, $filename, $line) {
                 throw new \ErrorException($message, 0, $severity, $filename, $line);
             });
 
@@ -538,7 +538,7 @@ class Server
 			$response->getBody()->write($contents);
 			$response = $response->withHeader("Content-type", "text/turtle");
 			$response = $response->withStatus(200);
-		} else if ($filesystem->has($path) === false) {
+		} elseif ($filesystem->has($path) === false) {
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(404);

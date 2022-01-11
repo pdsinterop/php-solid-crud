@@ -411,12 +411,17 @@ class Server
 				'Sec-WebSocket-Protocol' => 'solid-0.1'
 			)
 		));
-		$client->send("pub $baseUrl$path\n");
 
-		while ($path !== "/") {
-			$path = $this->parentPath($path);
-			$client->send("pub $baseUrl$path\n");
-		}
+        try {
+            $client->send("pub $baseUrl$path\n");
+
+            while ($path !== "/") {
+                $path = $this->parentPath($path);
+                $client->send("pub $baseUrl$path\n");
+            }
+        } catch (\WebSocket\Exception $exception) {
+            throw new Exception('Could not write to pub-sup server', 502, $exception);
+        }
 	}
 
     private function handleDeleteRequest(Response $response, string $path, $contents): Response

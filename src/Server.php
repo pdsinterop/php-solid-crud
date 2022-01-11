@@ -45,6 +45,8 @@ class Server
     private $baseUrl;
     /** @var Filesystem */
     private $filesystem;
+    /** @var Graph */
+    private $graph;
     /** @var string */
     private $pubsub;
     /** @var Response */
@@ -62,6 +64,11 @@ class Server
         return $this->response;
     }
 
+    private function getGraph(): Graph
+    {
+        return clone $this->graph;
+    }
+
     final public function setBaseUrl($url)
     {
         $this->baseUrl = $url;
@@ -77,12 +84,14 @@ class Server
 
     //////////////////////////////// PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-    final public function __construct(Filesystem $filesystem, Response $response)
+    // @TODO: The Graph should be injected by the caller
+    final public function __construct(Filesystem $filesystem, Response $response, Graph $graph = null)
     {
         $this->basePath = '';
         $this->baseUrl = '';
         $this->pubsub = '';
         $this->filesystem = $filesystem;
+        $this->graph = $graph ?? new Graph();
         $this->response = $response;
     }
 
@@ -249,7 +258,7 @@ class Server
 	private function handleSparqlUpdate(Response $response, string $path, $contents): Response
 	{
         $filesystem = $this->filesystem;
-		$graph = new Graph();
+		$graph = $this->getGraph();
 
         if ($filesystem->has($path) === false) {
 			$data = '';
@@ -279,7 +288,7 @@ class Server
 						break;
 						case "DELETE":
 							// delete $triples from $graph
-							$deleteGraph = new Graph();
+							$deleteGraph = $this->getGraph();
 							$deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 							$resources = $deleteGraph->resources();
 							foreach ($resources as $resource) {

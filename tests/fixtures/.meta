@@ -23,12 +23,12 @@
 <redirectPermanent.ttl>
     dc:title "Permanent Redirect Test document" ;
     rdfs:comment "Non-existent file for testing metadata that has been redirected permanently " ;
-    lm:redirectPermanent <existingFile.ttl> .
+    lm:redirectPermanent <data/existingFile.ttl> .
 
 <redirectTemporary.ttl>
     dc:title "Temporary Redirect Test document" ;
     rdfs:comment "Non-existent file for testing metadata that has been redirected temporarily" ;
-    lm:redirectTemporary <nested/parent/childFile.ttl> .
+    lm:redirectTemporary <data/nested/parent/childFile.ttl> .
 
 <deleted/>
     dc:title "Deleted Test directory" ;
@@ -38,5 +38,5 @@
 <redirected/>
     dc:title "Redirect Test directory" ;
     rdfs:comment "Non-existent directory, all path under here should also be marked as redirected temporarily" ;
-    lm:redirectTemporary <nested/> .
+    lm:redirectTemporary <data/nested/> .
 

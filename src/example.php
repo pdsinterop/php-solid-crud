@@ -162,6 +162,7 @@ __halt_compiler();<!doctype html>
     textarea {height: 10em; width: 100%;}
 
     .empty { opacity: 0.1; background: lightgray; }
+    .redirected::before {content: "(redirected to)";}
     .status-2 p {background: green}
     .status-4 p {background: orangered}
     .status-5 p {background: darkred}
@@ -202,7 +203,7 @@ __halt_compiler();<!doctype html>
                     });
 
                     output.innerHTML += `
-                      <p>
+                      <p class="${response.redirected ? 'redirected' : ''}">
                         <code>${response.status}</code> ${response.statusText}
                       </p>
                       <pre><code>${headers}</code></pre>

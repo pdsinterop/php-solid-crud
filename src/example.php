@@ -60,8 +60,10 @@ $path = $request->getUri()->getPath();
 $target = $request->getMethod() . $request->getRequestTarget();
 
 if (strpos($path, '/data/') === 0) {
-    // Route starts with our data-source prefix
-    $request = $request->withUri($request->getUri()->withPath(substr($path, 5)));
+    /*/ Remove the `/data` prefix from the path /*/
+    $changedPath = substr($request->getUri()->getPath(), 5);
+    $request = $request->withUri($request->getUri()->withPath($changedPath));
+
     $response = $server->respondToRequest($request);
 } elseif ($target === 'GET/') {
     $response->getBody()->write(getHomepage());

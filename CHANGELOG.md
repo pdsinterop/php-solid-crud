@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.4.1](https://github.com/pdsinterop/php-solid-crud/tree/v0.4.1) (2022-01-11)
+
+[Full Changelog](https://github.com/pdsinterop/php-solid-crud/compare/v0.4.0...v0.4.1)
+
 ## [v0.4.0](https://github.com/pdsinterop/php-solid-crud/tree/v0.4.0) (2022-01-11)
 
 [Full Changelog](https://github.com/pdsinterop/php-solid-crud/compare/v0.3.2...v0.4.0)

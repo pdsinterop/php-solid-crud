@@ -212,9 +212,10 @@ class Server
 							$filename = $this->guid();
 						}
 						// FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-						// FIXME: if no content type was passed, we should reject the request according to the spec;
-
 						switch ($contentType) {
+							case '':
+								// FIXME: if no content type was passed, we should reject the request according to the spec;
+							break;
 							case "text/plain":
 								$filename .= ".txt";
 							break;
@@ -607,11 +608,17 @@ class Server
 		foreach ($listContents as $item) {
 			switch($item['type']) {
 				case "file":
-					$filename = "<" . rawurlencode($item['basename']) . ">";
-					$turtle[$filename] = array(
-						"a" => array("ldp:Resource")
-					);
-					$turtle["<>"]['ldp:contains'][] = $filename;
+                    // ACL and meta files should not be listed in directory overview
+                    if (
+                        $item['basename'] !== '.meta'
+                        && in_array($item['extension'], ['acl', 'meta']) === false
+                    ) {
+                        $filename = "<" . rawurlencode($item['basename']) . ">";
+                        $turtle[$filename] = array(
+                            "a" => array("ldp:Resource")
+                        );
+                        $turtle["<>"]['ldp:contains'][] = $filename;
+                    }
 				break;
 				case "dir":
 					// FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.

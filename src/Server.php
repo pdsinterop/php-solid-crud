@@ -6,6 +6,7 @@ use EasyRdf_Exception;
 use EasyRdf_Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FileExistsException;
+use League\Flysystem\FileNotFoundException;
 use League\Flysystem\FilesystemInterface as Filesystem;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -550,8 +551,10 @@ class Server
                 $response = $response->withStatus(200);
             } else {
 				if ($filesystem->asMime($mime)->has($path)) {
-					$mimetype = $filesystem->asMime($mime)->getMimetype($path);
 					$contents = $filesystem->asMime($mime)->read($path);
+
+                    $response = $this->addLinkRelationHeaders($response, $path, $mime);
+
 					if (preg_match('/.ttl$/', $path)) {
 						$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
 					} elseif (preg_match('/.acl$/', $path)) {
@@ -655,4 +658,80 @@ EOF;
 
 		return $container;
 	}
+
+    // =========================================================================
+    // @TODO: All Auxiliary Resources logic should probably be moved to a separate class.
+
+    /**
+     * Currently, in the spec channel, it is under consideration to use
+     * <http://www.w3.org/ns/auth/acl#accessControl> or <http://www.w3.org/ns/solid/terms#acl>
+     * instead of (or besides) "acl" and <https://www.w3.org/ns/iana/link-relations/relation#describedby>
+     * instead of (or besides) "describedby".
+     *
+     * @see https://github.com/solid/specification/issues/172
+     */
+    private function addLinkRelationHeaders(Response $response, string $path, $mime=null): Response
+    {
+        // @FIXME: If a `.meta` file is requested, it must have header `Link: </path/to/resource>; rel="describes"`
+
+        if ($this->hasAcl($path, $mime)) {
+            $value = sprintf('<%s>; rel="acl"', $this->getDescribedByPath($path, $mime));
+            $response = $response->withAddedHeader('Link', $value);
+        }
+
+        if ($this->hasDescribedBy($path, $mime)) {
+            $value = sprintf('<%s>; rel="describedby"', $this->getDescribedByPath($path, $mime));
+            $response = $response->withAddedHeader('Link', $value);
+        }
+
+        return $response;
+    }
+
+    private function getAclPath(string $path, $mime = null): string
+    {
+        $metadataCache = $this->getMetadata($path, $mime);
+
+        return $metadataCache[$path]['acl'] ?? '';
+    }
+
+    private function getDescribedByPath(string $path, $mime = null): string
+    {
+        $metadataCache = $this->getMetadata($path, $mime);
+
+        return $metadataCache[$path]['describedby'] ?? '';
+    }
+
+    private function getMetadata(string $path, $mime) : array
+    {
+        // @NOTE: Because the lookup can be expensive, we cache the result
+        static $metadataCache = [];
+
+        if (isset($metadataCache[$path]) === false) {
+            $filesystem = $this->filesystem;
+
+            try {
+                if ($mime) {
+                    $metadata = $filesystem->asMime($mime)->getMetadata($path);
+                } else {
+                    $metadata = $filesystem->getMetadata($path);
+                }
+            } catch (FileNotFoundException $e) {
+                $metadata = [];
+            }
+
+            $metadataCache[$path . $mime] = $metadata;
+        }
+
+        return $metadataCache;
+    }
+
+    private function hasAcl(string $path, $mime = null): bool
+    {
+        return $this->getAclPath($path, $mime) !== '';
+    }
+
+    private function hasDescribedBy(string $path, $mime = null): bool
+    {
+        return $this->getDescribedByPath($path, $mime) !== '';
+    }
 }

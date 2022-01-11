@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.0](https://github.com/pdsinterop/php-solid-crud/tree/v0.5.0) (2022-01-11)
+
+[Full Changelog](https://github.com/pdsinterop/php-solid-crud/compare/v0.4.1...v0.5.0)
+
+### Pull request(s) without label
+
+- Add solid link-metadata responses [\#13](https://github.com/pdsinterop/php-solid-crud/pull/13) (@Potherca)
+
 ## [v0.4.1](https://github.com/pdsinterop/php-solid-crud/tree/v0.4.1) (2022-01-11)
 
 [Full Changelog](https://github.com/pdsinterop/php-solid-crud/compare/v0.4.0...v0.4.1)

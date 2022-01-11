@@ -6,7 +6,6 @@ use EasyRdf_Exception;
 use EasyRdf_Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FilesystemInterface as Filesystem;
-use LogicException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Throwable;
@@ -147,8 +146,8 @@ class Server
             // @FIXME: Add correct headers to resources (for instance allow DELETE on a GET resource)
             // ->withAddedHeader('Accept-Patch', 'text/ldpatch')
             // ->withAddedHeader('Accept-Post', 'text/turtle, application/ld+json, image/bmp, image/jpeg')
-            // ->withHeader('Allow', 'GET, HEAD, OPTIONS, PATCH, POST, PUT');
-        // ;
+            // ->withHeader('Allow', 'GET, HEAD, OPTIONS, PATCH, POST, PUT')
+        //;
 
         switch ($method) {
             case 'DELETE':
@@ -249,8 +248,7 @@ class Server
 				}
 			break;
             default:
-                $message = vsprintf(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
-                throw new LogicException($message);
+                throw Exception::create(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
                 break;
         }
 
@@ -303,7 +301,7 @@ class Server
 										foreach ($values as $value) {
 											$count = $graph->delete($resource, $property, $value);
 											if ($count === 0) {
-												throw new \Exception("Could not delete a value", 500);
+												throw new Exception("Could not delete a value", 500);
 											}
 										}
 									}
@@ -311,7 +309,7 @@ class Server
 							}
 						break;
 						default:
-							throw new \Exception("Unimplemented SPARQL", 500);
+							throw new Exception("Unimplemented SPARQL", 500);
 						break;
 					}
 				}
@@ -500,6 +498,7 @@ class Server
     private function handleReadRequest(Response $response, string $path, $contents, $mime=''): Response
     {
 		$filesystem = $this->filesystem;
+
 		if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
 			$contents = $this->listDirectoryAsTurtle($path);
 			$response->getBody()->write($contents);
@@ -591,7 +590,7 @@ class Server
 					$turtle["<>"]['ldp:contains'][] = $filename;
 				break;
 				default:
-					throw new \Exception("Unknown type", 500);
+					throw new Exception("Unknown type", 500);
 				break;
 			}
 		}

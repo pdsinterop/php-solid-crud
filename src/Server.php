@@ -103,7 +103,12 @@ class Server
 		}
 		$path = rawurldecode($path);
 
-		// @FIXME: The path can also come from a 'Slug' header
+        // The path can also come from a 'Slug' header
+        if ($path === '' && $request->hasHeader('Slug')) {
+            $slugs = $request->getHeader('Slug');
+            // @CHECKME: First set header wins, is this correct? Or should it be the last one?
+            $path = reset($slugs);
+        }
 
         $method = $this->getRequestMethod($request);
 

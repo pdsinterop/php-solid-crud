@@ -615,10 +615,6 @@ class Server
 		);
 
 		foreach ($listContents as $item) {
-
-            // @FIXME: $item needs to be checked for "describedby" metadata to see if they need Meta Link handling
-            //         for instance be added to the file list
-
 			switch($item['type']) {
 				case "file":
                     // ACL and meta files should not be listed in directory overview
@@ -626,11 +622,25 @@ class Server
                         $item['basename'] !== '.meta'
                         && in_array($item['extension'], ['acl', 'meta']) === false
                     ) {
-                        $filename = "<" . rawurlencode($item['basename']) . ">";
-                        $turtle[$filename] = array(
-                            "a" => array("ldp:Resource")
-                        );
-                        $turtle["<>"]['ldp:contains'][] = $filename;
+                        try {
+                            $linkMetadataResponse = $this->handleLinkMetadata(clone $this->response, $item['path']);
+                        } catch (Exception $e) {
+                            // If the link-metadata can not be retrieved for whatever reason, it should just be listed
+                            // The error will surface when the file itself is accessed
+                            $linkMetadataResponse = null;
+                        }
+
+                        if (
+                            $linkMetadataResponse === null
+                            || in_array($linkMetadataResponse->getStatusCode(), [404, 410]) === false
+                        ) {
+                            /*/ Only files without link-metadata instruction, or with a redirect instruction may be shown /*/
+                            $filename = "<" . rawurlencode($item['basename']) . ">";
+                            $turtle[$filename] = array(
+                                "a" => array("ldp:Resource")
+                            );
+                            $turtle["<>"]['ldp:contains'][] = $filename;
+                        }
                     }
 				break;
 				case "dir":

@@ -5,6 +5,7 @@ namespace Pdsinterop\Solid\Resources;
 use EasyRdf_Exception;
 use EasyRdf_Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
+use League\Flysystem\FileExistsException;
 use League\Flysystem\FilesystemInterface as Filesystem;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -355,8 +356,29 @@ class Server
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-            // @FIXME: Handle error scenarios correctly (for instance trying to create a file underneath another file)
-            $success = $filesystem->write($path, $contents);
+            $success = false;
+
+            set_error_handler(static function($severity, $message, $filename, $line) {
+                throw new \ErrorException($message, 0, $severity, $filename, $line);
+            });
+
+            try {
+                $success = $filesystem->write($path, $contents);
+            } catch (FileExistsException $e) {
+                $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
+                $response->getBody()->write($message);
+
+                return $response->withStatus(400);
+            } catch (Throwable $exception) {
+                /*/ An error occurred in the underlying flysystem adapter /*/
+                $message = vsprintf('Could not write to path %s: %s', [$path, $exception->getMessage()]);
+                $response->getBody()->write($message);
+
+                return $response->withStatus(400);
+            } finally {
+                restore_error_handler();
+            }
+
 			if ($success) {
 				$response = $response->withHeader("Location", $this->baseUrl . $path);
 				$response = $response->withStatus(201);

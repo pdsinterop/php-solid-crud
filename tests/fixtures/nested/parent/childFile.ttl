@@ -1,0 +1,7 @@
+@prefix dc: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+</>
+    dc:title "Nested Test document" ;
+    rdfs:comment "Dummy file for testing metadata file in a parent directory" ;
+    rdfs:comment "It is also used to be directed to by the non-existent file 'redirectTemporary.ttl'" .

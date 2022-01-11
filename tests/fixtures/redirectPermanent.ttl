@@ -1,0 +1,8 @@
+@prefix dc: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+</>
+    dc:title "This content should never be shown" ;
+    rdfs:comment "Dummy file for testing link-metadata override" ;
+    rdfs:comment "Instead of this content, you should be seeing the content of the file redirected to" ;
+    rdfs:comment "In the container overview, the filename / path is allowed to be shown." .

@@ -19,7 +19,10 @@ class Server
 
 	public const ERROR_CAN_NOT_PARSE_FOR_PATCH = 'Could not parse the requested resource for patching';
     public const ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER = 'Only empty containers can be deleted, "%s" is not empty';
+    public const ERROR_CAN_NOT_PARSE_METADATA = 'Could not parse metadata for %s';
+    public const ERROR_CAN_NOT_REDIRECT_WITHOUT_URL = "Cannot create %s: no URL set";
     public const ERROR_MISSING_SPARQL_CONTENT_TYPE = 'Request is missing required Content-Type "application/sparql-update" or "application/sparql-update-single-match"';
+    public const ERROR_MULTIPLE_LINK_METADATA_FOUND = 'More than one link-metadata found for %s';
     public const ERROR_NOT_IMPLEMENTED_SPARQL = 'SPARQL Not Implemented';
     public const ERROR_PATH_DOES_NOT_EXIST = 'Requested path "%s" does not exist';
     public const ERROR_PATH_EXISTS = 'Requested path "%s" already exists';
@@ -538,40 +541,43 @@ class Server
 			$response->getBody()->write($contents);
 			$response = $response->withHeader("Content-type", "text/turtle");
 			$response = $response->withStatus(200);
-		} elseif ($filesystem->has($path) === false) {
+		} elseif ($filesystem->has($path) === false && $this->hasDescribedBy($path) === false) {
+            /*/ The file does not exist and no link-metadata is present /*/
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(404);
         } else {
-			$mimetype = $filesystem->getMimetype($path);
-            if ($mimetype === self::MIME_TYPE_DIRECTORY) {
+            $linkMetadataResponse = $this->handleLinkMetadata($response, $path);
+            if ($linkMetadataResponse !== null) {
+                /*/ Link-metadata is present, return the altered response /*/
+                $response = $linkMetadataResponse;
+            } elseif ($filesystem->getMimetype($path) === self::MIME_TYPE_DIRECTORY) {
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
-				$response = $response->withHeader("Content-type", "text/turtle");
-                $response = $response->withStatus(200);
+                $response = $response->withHeader("Content-type", "text/turtle")->withStatus(200);
+            } elseif ($filesystem->asMime($mime)->has($path)) {
+            /*/ The file does exist and no link-metadata is present /*/
+                $response = $this->addLinkRelationHeaders($response, $path, $mime);
+
+                if (preg_match('/.ttl$/', $path)) {
+                    $mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
+                } elseif (preg_match('/.acl$/', $path)) {
+                    $mimetype = "text/turtle"; // FIXME: teach flysystem that .acl files also want text/turtle
+                } else {
+                    $mimetype = $filesystem->asMime($mime)->getMimetype($path);
+                }
+
+                $contents = $filesystem->asMime($mime)->read($path);
+
+                if ($contents !== false) {
+                    $response->getBody()->write($contents);
+                    $response = $response->withHeader("Content-type", $mimetype)->withStatus(200);
+                }
             } else {
-				if ($filesystem->asMime($mime)->has($path)) {
-					$contents = $filesystem->asMime($mime)->read($path);
-
-                    $response = $this->addLinkRelationHeaders($response, $path, $mime);
-
-					if (preg_match('/.ttl$/', $path)) {
-						$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
-					} elseif (preg_match('/.acl$/', $path)) {
-						$mimetype = "text/turtle"; // FIXME: teach flysystem that .acl files also want text/turtle
-					} else {
-						$mimetype = $filesystem->asMime($mime)->getMimetype($path);
-					}
-					if ($contents !== false) {
-						$response->getBody()->write($contents);
-						$response = $response->withHeader("Content-type", $mimetype);
-						$response = $response->withStatus(200);
-					}
-				} else {
-					$message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
-					$response->getBody()->write($message);
-					$response = $response->withStatus(404);
-				}
+                /*/ The file does exist in another format and no link-metadata is present /*/
+                $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
+                $response->getBody()->write($message);
+                $response = $response->withStatus(404);
             }
         }
 
@@ -616,11 +622,25 @@ class Server
                         $item['basename'] !== '.meta'
                         && in_array($item['extension'], ['acl', 'meta']) === false
                     ) {
-                        $filename = "<" . rawurlencode($item['basename']) . ">";
-                        $turtle[$filename] = array(
-                            "a" => array("ldp:Resource")
-                        );
-                        $turtle["<>"]['ldp:contains'][] = $filename;
+                        try {
+                            $linkMetadataResponse = $this->handleLinkMetadata(clone $this->response, $item['path']);
+                        } catch (Exception $e) {
+                            // If the link-metadata can not be retrieved for whatever reason, it should just be listed
+                            // The error will surface when the file itself is accessed
+                            $linkMetadataResponse = null;
+                        }
+
+                        if (
+                            $linkMetadataResponse === null
+                            || in_array($linkMetadataResponse->getStatusCode(), [404, 410]) === false
+                        ) {
+                            /*/ Only files without link-metadata instruction, or with a redirect instruction may be shown /*/
+                            $filename = "<" . rawurlencode($item['basename']) . ">";
+                            $turtle[$filename] = array(
+                                "a" => array("ldp:Resource")
+                            );
+                            $turtle["<>"]['ldp:contains'][] = $filename;
+                        }
                     }
 				break;
 				case "dir":
@@ -733,5 +753,144 @@ EOF;
     private function hasDescribedBy(string $path, $mime = null): bool
     {
         return $this->getDescribedByPath($path, $mime) !== '';
+    }
+
+    // =========================================================================
+    // @TODO: All link-metadata Response logic should probably be moved to a separate class.
+
+    private function handleLinkMetadata(Response $response, string $path)
+    {
+        $returnResponse = null;
+
+        if ($this->hasDescribedBy($path)) {
+            $linkMeta = $this->parseLinkedMetadata($path);
+
+            if (isset($linkMeta['type'], $linkMeta['url'])) {
+                $returnResponse = $this->buildLinkMetadataResponse($response, $linkMeta['type'], $linkMeta['url']);
+            }
+        }
+
+        return $returnResponse;
+    }
+
+    private function buildLinkMetadataResponse(Response $response, $type, $url = null)
+    {
+        switch ($type) {
+            case 'deleted':
+                $returnResponse = $response->withStatus(404);
+            break;
+
+            case 'forget':
+                $returnResponse = $response->withStatus(410);
+            break;
+
+            case 'redirectPermanent':
+                if ($url === null) {
+                    throw Exception::create(self::ERROR_CAN_NOT_REDIRECT_WITHOUT_URL, [$type]);
+                }
+                $returnResponse = $response->withHeader('Location', $url)->withStatus(308);
+            break;
+
+            case 'redirectTemporary':
+                if ($url === null) {
+                    throw Exception::create(self::ERROR_CAN_NOT_REDIRECT_WITHOUT_URL, [$type]);
+                }
+                $returnResponse = $response->withHeader('Location', $url)->withStatus(307);
+            break;
+
+            default:
+                // No (known) Link Metadata present = follow regular logic
+                $returnResponse = null;
+            break;
+        }
+
+        return $returnResponse;
+    }
+
+    private function parseLinkedMetadata(string $path)
+    {
+        $linkMeta = [];
+
+        try {
+            $describedByPath = $this->filesystem->getMetadata($path)['describedby'] ?? '';
+            $describedByContents = $this->filesystem->read($describedByPath);
+        } catch (FileNotFoundException $e) {
+            // @CHECKME: If, for whatever reason, the file is not present after all... Do we care here?
+            return $linkMeta;
+        }
+
+        $graph = $this->getGraph();
+
+        try {
+            $graph->parse($describedByContents);
+        } catch (EasyRdf_Exception $exception) {
+            throw Exception::create(self::ERROR_CAN_NOT_PARSE_METADATA, [$path]);
+        }
+
+        $toRdfPhp = $graph->toRdfPhp();
+
+        $rdfPaths = array_keys($toRdfPhp);
+        $foundPath = $this->findPath($rdfPaths, $path);
+
+        if (isset($toRdfPhp[$foundPath])) {
+            $filteredRdfData = array_filter($toRdfPhp[$foundPath], static function ($key) {
+                $uris = implode('|', [
+                    'pdsinterop.org/solid-link-metadata/links.ttl',
+                    'purl.org/pdsinterop/link-metadata',
+                ]);
+
+                return (bool) preg_match("#({$uris})#",
+                    $key);
+            }, ARRAY_FILTER_USE_KEY);
+
+            if (count($filteredRdfData) > 1) {
+                throw Exception::create(self::ERROR_MULTIPLE_LINK_METADATA_FOUND, [$path]);
+            }
+
+            if (count($filteredRdfData) > 0) {
+                $linkMetaType = array_key_first($filteredRdfData);
+                $type = substr($linkMetaType, strrpos($linkMetaType, '#') + 1);
+
+                $linkMetaValue = reset($filteredRdfData);
+                $value = array_pop($linkMetaValue);
+                $url = $value['value'] ?? null;
+
+                if ($path !== $foundPath) {
+                    // Change the path from the request to the redirect (or not found) path
+                    $url = substr_replace($path,
+                        $url,
+                        strpos($path, $foundPath),
+                        strlen($foundPath));
+                }
+
+                $linkMeta = [
+                    'type' => $type,
+                    'url' => $url,
+                ];
+            }
+        }
+
+        return $linkMeta;
+    }
+
+    private function findPath(array $rdfPaths, string $path)
+    {
+        $path = ltrim($path, '/');
+
+        foreach ($rdfPaths as $rdfPath) {
+            if (
+                strrpos($path, $rdfPath) === 0
+                && $this->filesystem->has($rdfPath)
+            ) {
+                // @FIXME: We have no way of knowing if the file is a directory or a file.
+                //         This means that, unless we make a trialing slash `/` required,
+                //         (using the example for `forget.ttl`) forget.ttl/foo.txt will
+                //         also work although semantically is should not
+                $path = $rdfPath;
+                break;
+            }
+        }
+
+        return $path;
     }
 }

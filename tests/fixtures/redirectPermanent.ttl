@@ -4,4 +4,5 @@
 </>
     dc:title "This content should never be shown" ;
     rdfs:comment "Dummy file for testing link-metadata override" ;
-    rdfs:comment "Instead of this content, you should be seeing the content of the file redirected to" .
+    rdfs:comment "Instead of this content, you should be seeing the content of the file redirected to" ;
+    rdfs:comment "In the container overview, the filename / path is allowed to be shown." .

@@ -2,9 +2,14 @@
 
 namespace Pdsinterop\Solid\Resources;
 
+use EasyRdf_Exception;
+use EasyRdf_Graph as Graph;
+use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FilesystemInterface as Filesystem;
+use LogicException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Throwable;
 use WebSocket\Client;
 
 class Server
@@ -35,6 +40,8 @@ class Server
         'PUT',
     ];
     /** @var string */
+    private $basePath;
+    /** @var string */
     private $baseUrl;
     /** @var Filesystem */
     private $filesystem;
@@ -59,7 +66,7 @@ class Server
     {
         $this->baseUrl = $url;
 
-        $serverRequest = new \Laminas\Diactoros\ServerRequest(array(),array(), $this->baseUrl);
+        $serverRequest = new ServerRequest(array(),array(), $this->baseUrl);
         $this->basePath = $serverRequest->getUri()->getPath();
     }
 
@@ -123,7 +130,7 @@ class Server
         $response = $response->withStatus(500);
 
         // Set Accept, Allow, and CORS headers
-        $response = $response
+        // $response = $response
             // ->withHeader('Access-Control-Allow-Origin', '*')
             // ->withHeader('Access-Control-Allow-Credentials','true')
             // ->withHeader('Access-Control-Allow-Headers', '*, authorization, accept, content-type')
@@ -131,7 +138,7 @@ class Server
             // ->withAddedHeader('Accept-Patch', 'text/ldpatch')
             // ->withAddedHeader('Accept-Post', 'text/turtle, application/ld+json, image/bmp, image/jpeg')
             // ->withHeader('Allow', 'GET, HEAD, OPTIONS, PATCH, POST, PUT');
-        ;
+        // ;
 
         switch ($method) {
             case 'DELETE':
@@ -232,7 +239,7 @@ class Server
 			break;
             default:
                 $message = vsprintf(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
-                throw new \LogicException($message);
+                throw new LogicException($message);
                 break;
         }
 
@@ -242,7 +249,7 @@ class Server
 	private function handleSparqlUpdate(Response $response, string $path, $contents): Response
 	{
         $filesystem = $this->filesystem;
-		$graph = new \EasyRdf_Graph();
+		$graph = new Graph();
 
         if ($filesystem->has($path) === false) {
 			$data = '';
@@ -272,19 +279,19 @@ class Server
 						break;
 						case "DELETE":
 							// delete $triples from $graph
-							$deleteGraph = new \EasyRdf_Graph();
+							$deleteGraph = new Graph();
 							$deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 							$resources = $deleteGraph->resources();
 							foreach ($resources as $resource) {
 								$properties = $resource->propertyUris();
 								foreach ($properties as $property) {
 									$values = $resource->all($property);
-									if (!sizeof($values)) {
+									if (!count($values)) {
 										$graph->delete($resource, $property);
 									} else {
 										foreach ($values as $value) {
 											$count = $graph->delete($resource, $property, $value);
-											if ($count == 0) {
+											if ($count === 0) {
 												throw new \Exception("Could not delete a value", 500);
 											}
 										}
@@ -305,18 +312,19 @@ class Server
 
 			if ($filesystem->has($path) === true) {
 				$success = $filesystem->update($path, $output);
-				$response = $response->withStatus($success ? 201 : 500);
-			} else {
+            } else {
 				$success = $filesystem->write($path, $output);
-				$response = $response->withStatus($success ? 201 : 500);
-			}
-			if ($success) {
+            }
+
+            $response = $response->withStatus($success ? 201 : 500);
+
+            if ($success) {
 				$this->sendWebsocketUpdate($path);
 			}
-		} catch (\EasyRdf_Exception $exception) {
+		} catch (EasyRdf_Exception $exception) {
 			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
 			$response = $response->withStatus(501);
-		} catch (\Exception $exception) {
+		} catch (Throwable $exception) {
 			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
 			$response = $response->withStatus(501);
 		}
@@ -349,12 +357,12 @@ class Server
 
 	private function parentPath($path)
 	{
-		if ($path == "/") {
+		if ($path === "/") {
 			return "/";
 		}
 		$pathicles = explode("/", $path);
 		$end = array_pop($pathicles);
-		if ($end == "") {
+		if ($end === "") {
 			array_pop($pathicles);
 		}
 		return implode("/", $pathicles) . "/";
@@ -385,19 +393,18 @@ class Server
 			return; // no pubsub server available, don't even try;
 		}
 
-		$pubsub = str_replace("https://", "ws://", $pubsub);
-		$pubsub = str_replace("http://", "ws://", $pubsub);
+        $pubsub = str_replace(["https://", "http://"], "ws://", $pubsub);
 
-		$baseUrl = $this->baseUrl;
+        $baseUrl = $this->baseUrl;
 
-		$client = new \WebSocket\Client($pubsub, array(
+		$client = new Client($pubsub, array(
 			'headers' => array(
 				'Sec-WebSocket-Protocol' => 'solid-0.1'
 			)
 		));
 		$client->send("pub $baseUrl$path\n");
 
-		while ($path != "/") {
+		while ($path !== "/") {
 			$path = $this->parentPath($path);
 			$client->send("pub $baseUrl$path\n");
 		}
@@ -482,7 +489,7 @@ class Server
     private function handleReadRequest(Response $response, string $path, $contents, $mime=''): Response
     {
 		$filesystem = $this->filesystem;
-		if ($path == "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+		if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
 			$contents = $this->listDirectoryAsTurtle($path);
 			$response->getBody()->write($contents);
 			$response = $response->withHeader("Content-type", "text/turtle");
@@ -533,7 +540,7 @@ class Server
 	private function listDirectoryAsTurtle($path)
     {
         $filesystem = $this->filesystem;
-		if ($path == "/") {
+		if ($path === "/") {
 			$listContents = $filesystem->listContents(".");// FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
 		} else {
 			$listContents = $filesystem->listContents($path);
@@ -541,11 +548,13 @@ class Server
 		// CHECKME: maybe structure this data als RDF/PHP
 		// https://www.easyrdf.org/docs/rdf-formats-php
 
+        // @FIXME: The $name variable is declared here but never used. Should it be removed or is there a bug further down?
 		$name = basename($path) . ":";
 		// turtle syntax doesn't allow labels that start with a number, so prefix it if it does;
 		if (preg_match("/^\d/", $name)) {
 			$name = "container-" . $name;
 		}
+
 		$turtle = array(
 			"<>" => array(
 				"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),
@@ -586,7 +595,7 @@ EOF;
 			$container .= "\n$name\n";
 			$lines = [];
 			foreach ($item as $property => $values) {
-				if (sizeof($values)) {
+				if (count($values)) {
 					$lines[] = "\t" . $property . " " . implode(", ", $values);
 				}
 			}

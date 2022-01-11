@@ -762,61 +762,46 @@ EOF;
     {
         $returnResponse = null;
 
-        // @FIXME: If a $path is a file underneath a directory that has been marked as moved, the response should also be a redirect/404/410.
-
         if ($this->hasDescribedBy($path)) {
             $linkMeta = $this->parseLinkedMetadata($path);
 
-            if (count($linkMeta) > 1) {
-                throw Exception::create(self::ERROR_MULTIPLE_LINK_METADATA_FOUND, [$path]);
+            if (isset($linkMeta['type'], $linkMeta['url'])) {
+                $returnResponse = $this->buildLinkMetadataResponse($response, $linkMeta['type'], $linkMeta['url']);
             }
-
-            $returnResponse = $this->buildLinkMetadataResponse($linkMeta, $response);
         }
 
         return $returnResponse;
     }
 
-    private function buildLinkMetadataResponse(array $linkMeta, Response $response)
+    private function buildLinkMetadataResponse(Response $response, $type, $url = null)
     {
-        $returnResponse = null;
+        switch ($type) {
+            case 'deleted':
+                $returnResponse = $response->withStatus(404);
+            break;
 
-        if (count($linkMeta) > 0) {
-            $linkMetaType = array_key_first($linkMeta);
+            case 'forget':
+                $returnResponse = $response->withStatus(410);
+            break;
 
-            $type = substr($linkMetaType, strrpos($linkMetaType, '#') + 1);
+            case 'redirectPermanent':
+                if ($url === null) {
+                    throw Exception::create(self::ERROR_CAN_NOT_REDIRECT_WITHOUT_URL, [$type]);
+                }
+                $returnResponse = $response->withHeader('Location', $url)->withStatus(308);
+            break;
 
-            $linkMetaValue = reset($linkMeta);
-            $value = array_pop($linkMetaValue);
-            $url = $value['value'] ?? null;
+            case 'redirectTemporary':
+                if ($url === null) {
+                    throw Exception::create(self::ERROR_CAN_NOT_REDIRECT_WITHOUT_URL, [$type]);
+                }
+                $returnResponse = $response->withHeader('Location', $url)->withStatus(307);
+            break;
 
-            switch ($type) {
-                case 'deleted':
-                    $returnResponse = $response->withStatus(404);
-                break;
-
-                case 'forget':
-                    $returnResponse = $response->withStatus(410);
-                break;
-
-                case 'redirectPermanent':
-                    if ($url === null) {
-                        throw Exception::create(self::ERROR_CAN_NOT_REDIRECT_WITHOUT_URL, [$type]);
-                    }
-                    $returnResponse = $response->withHeader('Location', $url)->withStatus(308);
-                break;
-
-                case 'redirectTemporary':
-                    if ($url === null) {
-                        throw Exception::create(self::ERROR_CAN_NOT_REDIRECT_WITHOUT_URL, [$type]);
-                    }
-                    $returnResponse = $response->withHeader('Location', $url)->withStatus(307);
-                break;
-
-                default:
-                    // No (known) Link Metadata present = follow regular logic
-                break;
-            }
+            default:
+                // No (known) Link Metadata present = follow regular logic
+                $returnResponse = null;
+            break;
         }
 
         return $returnResponse;
@@ -844,10 +829,11 @@ EOF;
 
         $toRdfPhp = $graph->toRdfPhp();
 
-        $path = ltrim($path, '/');
+        $rdfPaths = array_keys($toRdfPhp);
+        $foundPath = $this->findPath($rdfPaths, $path);
 
-        if (isset($toRdfPhp[$path])) {
-            $linkMeta = array_filter($toRdfPhp[$path], static function ($key) {
+        if (isset($toRdfPhp[$foundPath])) {
+            $filteredRdfData = array_filter($toRdfPhp[$foundPath], static function ($key) {
                 $uris = implode('|', [
                     'pdsinterop.org/solid-link-metadata/links.ttl',
                     'purl.org/pdsinterop/link-metadata',
@@ -856,8 +842,55 @@ EOF;
                 return (bool) preg_match("#({$uris})#",
                     $key);
             }, ARRAY_FILTER_USE_KEY);
+
+            if (count($filteredRdfData) > 1) {
+                throw Exception::create(self::ERROR_MULTIPLE_LINK_METADATA_FOUND, [$path]);
+            }
+
+            if (count($filteredRdfData) > 0) {
+                $linkMetaType = array_key_first($filteredRdfData);
+                $type = substr($linkMetaType, strrpos($linkMetaType, '#') + 1);
+
+                $linkMetaValue = reset($filteredRdfData);
+                $value = array_pop($linkMetaValue);
+                $url = $value['value'] ?? null;
+
+                if ($path !== $foundPath) {
+                    // Change the path from the request to the redirect (or not found) path
+                    $url = substr_replace($path,
+                        $url,
+                        strpos($path, $foundPath),
+                        strlen($foundPath));
+                }
+
+                $linkMeta = [
+                    'type' => $type,
+                    'url' => $url,
+                ];
+            }
         }
 
         return $linkMeta;
+    }
+
+    private function findPath(array $rdfPaths, string $path)
+    {
+        $path = ltrim($path, '/');
+
+        foreach ($rdfPaths as $rdfPath) {
+            if (
+                strrpos($path, $rdfPath) === 0
+                && $this->filesystem->has($rdfPath)
+            ) {
+                // @FIXME: We have no way of knowing if the file is a directory or a file.
+                //         This means that, unless we make a trialing slash `/` required,
+                //         (using the example for `forget.ttl`) forget.ttl/foo.txt will
+                //         also work although semantically is should not
+                $path = $rdfPath;
+                break;
+            }
+        }
+
+        return $path;
     }
 }

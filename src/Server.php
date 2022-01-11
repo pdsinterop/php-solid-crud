@@ -5,8 +5,9 @@ namespace Pdsinterop\Solid\Resources;
 use EasyRdf_Exception;
 use EasyRdf_Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
+use League\Flysystem\FileExistsException;
+use League\Flysystem\FileNotFoundException;
 use League\Flysystem\FilesystemInterface as Filesystem;
-use LogicException;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Throwable;
@@ -104,7 +105,12 @@ class Server
 		}
 		$path = rawurldecode($path);
 
-		// @FIXME: The path can also come from a 'Slug' header
+        // The path can also come from a 'Slug' header
+        if ($path === '' && $request->hasHeader('Slug')) {
+            $slugs = $request->getHeader('Slug');
+            // @CHECKME: First set header wins, is this correct? Or should it be the last one?
+            $path = reset($slugs);
+        }
 
         $method = $this->getRequestMethod($request);
 
@@ -147,8 +153,8 @@ class Server
             // @FIXME: Add correct headers to resources (for instance allow DELETE on a GET resource)
             // ->withAddedHeader('Accept-Patch', 'text/ldpatch')
             // ->withAddedHeader('Accept-Post', 'text/turtle, application/ld+json, image/bmp, image/jpeg')
-            // ->withHeader('Allow', 'GET, HEAD, OPTIONS, PATCH, POST, PUT');
-        // ;
+            // ->withHeader('Allow', 'GET, HEAD, OPTIONS, PATCH, POST, PUT')
+        //;
 
         switch ($method) {
             case 'DELETE':
@@ -161,7 +167,7 @@ class Server
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					$response = $response->withStatus("204"); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
+					$response = $response->withStatus(204); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
 					if ($this->pubsub) {
 						$response = $response->withHeader("updates-via", $this->pubsub);
 					}
@@ -171,7 +177,7 @@ class Server
             case 'OPTIONS':
                 $response = $response
                     ->withHeader('Vary', 'Accept')
-                    ->withStatus('204')
+                    ->withStatus(204)
                 ;
                 break;
 
@@ -198,7 +204,7 @@ class Server
 					$mimetype = self::MIME_TYPE_DIRECTORY;
 				}
 				if ($pathExists === true) {
-					if ($mimetype === self::MIME_TYPE_DIRECTORY) {
+					if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
 						$contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
 						$slug = $request->getHeaderLine("Slug");
 						if ($slug) {
@@ -207,9 +213,10 @@ class Server
 							$filename = $this->guid();
 						}
 						// FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-						// FIXME: if no content type was passed, we should reject the request according to the spec;
-
 						switch ($contentType) {
+							case '':
+								// FIXME: if no content type was passed, we should reject the request according to the spec;
+							break;
 							case "text/plain":
 								$filename .= ".txt";
 							break;
@@ -249,8 +256,7 @@ class Server
 				}
 			break;
             default:
-                $message = vsprintf(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
-                throw new LogicException($message);
+                throw Exception::create(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
                 break;
         }
 
@@ -303,7 +309,7 @@ class Server
 										foreach ($values as $value) {
 											$count = $graph->delete($resource, $property, $value);
 											if ($count === 0) {
-												throw new \Exception("Could not delete a value", 500);
+												throw new Exception("Could not delete a value", 500);
 											}
 										}
 									}
@@ -311,7 +317,7 @@ class Server
 							}
 						break;
 						default:
-							throw new \Exception("Unimplemented SPARQL", 500);
+							throw new Exception("Unimplemented SPARQL", 500);
 						break;
 					}
 				}
@@ -352,8 +358,29 @@ class Server
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-            // @FIXME: Handle error scenarios correctly (for instance trying to create a file underneath another file)
-            $success = $filesystem->write($path, $contents);
+            $success = false;
+
+            set_error_handler(static function ($severity, $message, $filename, $line) {
+                throw new \ErrorException($message, 0, $severity, $filename, $line);
+            });
+
+            try {
+                $success = $filesystem->write($path, $contents);
+            } catch (FileExistsException $e) {
+                $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
+                $response->getBody()->write($message);
+
+                return $response->withStatus(400);
+            } catch (Throwable $exception) {
+                /*/ An error occurred in the underlying flysystem adapter /*/
+                $message = vsprintf('Could not write to path %s: %s', [$path, $exception->getMessage()]);
+                $response->getBody()->write($message);
+
+                return $response->withStatus(400);
+            } finally {
+                restore_error_handler();
+            }
+
 			if ($success) {
 				$response = $response->withHeader("Location", $this->baseUrl . $path);
 				$response = $response->withStatus(201);
@@ -413,12 +440,17 @@ class Server
 				'Sec-WebSocket-Protocol' => 'solid-0.1'
 			)
 		));
-		$client->send("pub $baseUrl$path\n");
 
-		while ($path !== "/") {
-			$path = $this->parentPath($path);
-			$client->send("pub $baseUrl$path\n");
-		}
+        try {
+            $client->send("pub $baseUrl$path\n");
+
+            while ($path !== "/") {
+                $path = $this->parentPath($path);
+                $client->send("pub $baseUrl$path\n");
+            }
+        } catch (\WebSocket\Exception $exception) {
+            throw new Exception('Could not write to pub-sup server', 502, $exception);
+        }
 	}
 
     private function handleDeleteRequest(Response $response, string $path, $contents): Response
@@ -500,12 +532,13 @@ class Server
     private function handleReadRequest(Response $response, string $path, $contents, $mime=''): Response
     {
 		$filesystem = $this->filesystem;
+
 		if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
 			$contents = $this->listDirectoryAsTurtle($path);
 			$response->getBody()->write($contents);
 			$response = $response->withHeader("Content-type", "text/turtle");
 			$response = $response->withStatus(200);
-		} else if ($filesystem->has($path) === false) {
+		} elseif ($filesystem->has($path) === false) {
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(404);
@@ -518,8 +551,10 @@ class Server
                 $response = $response->withStatus(200);
             } else {
 				if ($filesystem->asMime($mime)->has($path)) {
-					$mimetype = $filesystem->asMime($mime)->getMimetype($path);
 					$contents = $filesystem->asMime($mime)->read($path);
+
+                    $response = $this->addLinkRelationHeaders($response, $path, $mime);
+
 					if (preg_match('/.ttl$/', $path)) {
 						$mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
 					} elseif (preg_match('/.acl$/', $path)) {
@@ -576,11 +611,17 @@ class Server
 		foreach ($listContents as $item) {
 			switch($item['type']) {
 				case "file":
-					$filename = "<" . rawurlencode($item['basename']) . ">";
-					$turtle[$filename] = array(
-						"a" => array("ldp:Resource")
-					);
-					$turtle["<>"]['ldp:contains'][] = $filename;
+                    // ACL and meta files should not be listed in directory overview
+                    if (
+                        $item['basename'] !== '.meta'
+                        && in_array($item['extension'], ['acl', 'meta']) === false
+                    ) {
+                        $filename = "<" . rawurlencode($item['basename']) . ">";
+                        $turtle[$filename] = array(
+                            "a" => array("ldp:Resource")
+                        );
+                        $turtle["<>"]['ldp:contains'][] = $filename;
+                    }
 				break;
 				case "dir":
 					// FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.
@@ -591,7 +632,7 @@ class Server
 					$turtle["<>"]['ldp:contains'][] = $filename;
 				break;
 				default:
-					throw new \Exception("Unknown type", 500);
+					throw new Exception("Unknown type", 500);
 				break;
 			}
 		}
@@ -617,4 +658,80 @@ EOF;
 
 		return $container;
 	}
+
+    // =========================================================================
+    // @TODO: All Auxiliary Resources logic should probably be moved to a separate class.
+
+    /**
+     * Currently, in the spec channel, it is under consideration to use
+     * <http://www.w3.org/ns/auth/acl#accessControl> or <http://www.w3.org/ns/solid/terms#acl>
+     * instead of (or besides) "acl" and <https://www.w3.org/ns/iana/link-relations/relation#describedby>
+     * instead of (or besides) "describedby".
+     *
+     * @see https://github.com/solid/specification/issues/172
+     */
+    private function addLinkRelationHeaders(Response $response, string $path, $mime=null): Response
+    {
+        // @FIXME: If a `.meta` file is requested, it must have header `Link: </path/to/resource>; rel="describes"`
+
+        if ($this->hasAcl($path, $mime)) {
+            $value = sprintf('<%s>; rel="acl"', $this->getDescribedByPath($path, $mime));
+            $response = $response->withAddedHeader('Link', $value);
+        }
+
+        if ($this->hasDescribedBy($path, $mime)) {
+            $value = sprintf('<%s>; rel="describedby"', $this->getDescribedByPath($path, $mime));
+            $response = $response->withAddedHeader('Link', $value);
+        }
+
+        return $response;
+    }
+
+    private function getAclPath(string $path, $mime = null): string
+    {
+        $metadataCache = $this->getMetadata($path, $mime);
+
+        return $metadataCache[$path]['acl'] ?? '';
+    }
+
+    private function getDescribedByPath(string $path, $mime = null): string
+    {
+        $metadataCache = $this->getMetadata($path, $mime);
+
+        return $metadataCache[$path]['describedby'] ?? '';
+    }
+
+    private function getMetadata(string $path, $mime) : array
+    {
+        // @NOTE: Because the lookup can be expensive, we cache the result
+        static $metadataCache = [];
+
+        if (isset($metadataCache[$path]) === false) {
+            $filesystem = $this->filesystem;
+
+            try {
+                if ($mime) {
+                    $metadata = $filesystem->asMime($mime)->getMetadata($path);
+                } else {
+                    $metadata = $filesystem->getMetadata($path);
+                }
+            } catch (FileNotFoundException $e) {
+                $metadata = [];
+            }
+
+            $metadataCache[$path . $mime] = $metadata;
+        }
+
+        return $metadataCache;
+    }
+
+    private function hasAcl(string $path, $mime = null): bool
+    {
+        return $this->getAclPath($path, $mime) !== '';
+    }
+
+    private function hasDescribedBy(string $path, $mime = null): bool
+    {
+        return $this->getDescribedByPath($path, $mime) !== '';
+    }
 }

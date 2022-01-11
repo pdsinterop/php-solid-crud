@@ -66,7 +66,10 @@ if (strpos($path, '/data/') === 0) {
 
     $response = $server->respondToRequest($request);
 } elseif ($target === 'GET/') {
-    $response->getBody()->write(getHomepage());
+    $fileHandle = fopen(__FILE__, 'rb');
+    fseek($fileHandle, __COMPILER_HALT_OFFSET__);
+    $homepage = stream_get_contents($fileHandle);
+    $response->getBody()->write($homepage);
 } else {
     $response = $response->withStatus(404);
     $response->getBody()->write("<h1>404</h1><p>Path '$path' does not exist.</p>");
@@ -85,17 +88,8 @@ foreach ($response->getHeaders() as $name => $values) {
     }
 }
 
-echo (string)  $response->getBody();
+echo (string) $response->getBody();
 exit;
-
-function getHomepage() : string
-{
-    $fileHandle = fopen(__FILE__, 'rb');
-
-    fseek($fileHandle, __COMPILER_HALT_OFFSET__);
-
-    return stream_get_contents($fileHandle);
-}
 
 __halt_compiler();<!doctype html>
 <html lang="en">

@@ -157,7 +157,7 @@ $request = \Laminas\Diactoros\ServerRequestFactory::fromGlobals(
 );
 
 /*/ Remove the `/data` prefix from the path /*/
-$changedPath = substr($request->getUri()->getPath(), 5)));
+$changedPath = substr($request->getUri()->getPath(), 5);
 $request = $request->withUri($request->getUri()->withPath($changedPath));
 
 /*/ Handle the request /*/

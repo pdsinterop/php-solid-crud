@@ -1,0 +1,31 @@
+@prefix dc: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix lm: <https://purl.org/pdsinterop/link-metadata#> .
+
+<existingFile.ttl>
+    dc:title "Top-Level Test document" ;
+    rdfs:comment "Dummy file for testing metadata file in same directory" .
+
+<nested/parent/childFile.ttl>
+    dc:title "Nested Test document" ;
+    rdfs:comment "Dummy file for testing metadata file in a parent directory" .
+
+<deleted.ttl>
+    dc:title "Deleted Test document" ;
+    rdfs:comment "Non-existent file for testing metadata that has been deleted" ;
+    lm:deleted <> .
+
+<forget.ttl>
+    dc:title "Forget Test document" ;
+    rdfs:comment "Non-existent file for testing metadata that should be forgotten" ;
+    lm:forget <> .
+
+<redirectPermanent.ttl>
+    dc:title "Permanent Redirect Test document" ;
+    rdfs:comment "Non-existent file for testing metadata that has been redirected permanently " ;
+    lm:redirectPermanent <existingFile.ttl> .
+
+<redirectTemporary.ttl>
+    dc:title "Temporary Redirect Test document" ;
+    rdfs:comment "Non-existent file for testing metadata that has been redirected temporarily" ;
+    lm:redirectTemporary <nested/parent/childFile.ttl> .

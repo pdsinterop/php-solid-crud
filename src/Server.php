@@ -675,7 +675,7 @@ EOF;
         // @FIXME: If a `.meta` file is requested, it must have header `Link: </path/to/resource>; rel="describes"`
 
         if ($this->hasAcl($path, $mime)) {
-            $value = sprintf('<%s>; rel="acl"', $this->getDescribedByPath($path, $mime));
+            $value = sprintf('<%s>; rel="acl"', $this->getAclPath($path, $mime));
             $response = $response->withAddedHeader('Link', $value);
         }
 

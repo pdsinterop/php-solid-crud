@@ -18,6 +18,7 @@ class Server
 
 	public const ERROR_CAN_NOT_PARSE_FOR_PATCH = 'Could not parse the requested resource for patching';
     public const ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER = 'Only empty containers can be deleted, "%s" is not empty';
+    public const ERROR_MISSING_SPARQL_CONTENT_TYPE = 'Request is missing required Content-Type "application/sparql-update" or "application/sparql-update-single-match"';
     public const ERROR_NOT_IMPLEMENTED_SPARQL = 'SPARQL Not Implemented';
     public const ERROR_PATH_DOES_NOT_EXIST = 'Requested path "%s" does not exist';
     public const ERROR_PATH_EXISTS = 'Requested path "%s" already exists';
@@ -182,6 +183,7 @@ class Server
 						$response = $this->handleSparqlUpdate($response, $path, $contents);
 					break;
 					default:
+						$response->getBody()->write(self::ERROR_MISSING_SPARQL_CONTENT_TYPE);
 						$response = $response->withStatus(400);
 					break;
 				}

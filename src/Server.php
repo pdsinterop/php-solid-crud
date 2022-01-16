@@ -818,7 +818,8 @@ EOF;
             $describedByPath = $this->filesystem->getMetadata($path)['describedby'] ?? '';
             $describedByContents = $this->filesystem->read($describedByPath);
         } catch (FileNotFoundException $e) {
-            // @CHECKME: If, for whatever reason, the file is not present after all... Do we care here?
+            // If, for whatever reason, the file is not present after all, the resource should still be returned (or a 404)
+            // @CHECKME: Should the upstream add a message to the header or something?
             return $linkMeta;
         }
 
@@ -827,7 +828,9 @@ EOF;
         try {
             $graph->parse($describedByContents, null, '/'.$describedByPath);
         } catch (EasyRdf_Exception $exception) {
-            throw Exception::create(self::ERROR_CAN_NOT_PARSE_METADATA, [$path]);
+            // If the metadata can not be parsed, the resource should still be returned (or a 404)
+            // @CHECKME: Should the upstream add a message to the header or something?
+            return $linkMeta;
         }
 
         $toRdfPhp = $graph->toRdfPhp();

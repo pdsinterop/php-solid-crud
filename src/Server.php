@@ -869,12 +869,18 @@ EOF;
                 $value = array_pop($linkMetaValue);
                 $url = $value['value'] ?? null;
 
+                if (strpos($foundPath, './') === 0) {
+                    // Filepath is relative to the meta file
+                    $path = $foundPath;
+                }
+
                 if ($path !== $foundPath) {
                     // Change the path from the request to the redirect (or not found) path
                     $url = substr_replace($path,
                         $url,
                         strpos($path, $foundPath),
-                        strlen($foundPath));
+                        strlen($foundPath))
+                    ;
                 }
 
                 $linkMeta = [

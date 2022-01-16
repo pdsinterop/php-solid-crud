@@ -914,7 +914,7 @@ EOF;
                 // @FIXME: We have no way of knowing if the file is a directory or a file.
                 //         This means that, unless we make a trialing slash `/` required,
                 //         (using the example for `forget.ttl`) forget.ttl/foo.txt will
-                //         also work although semantically is should not
+                //         also work although semantically it should not
                 $path = $rdfPath;
                 break;
             }

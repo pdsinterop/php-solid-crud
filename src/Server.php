@@ -559,10 +559,8 @@ class Server
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
-                if (preg_match('/.ttl$/', $path)) {
-                    $mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
-                } elseif (preg_match('/.acl$/', $path)) {
-                    $mimetype = "text/turtle"; // FIXME: teach flysystem that .acl files also want text/turtle
+                if (preg_match('/\.(acl|meta|ttl)$/', $path)) {
+                    $mimetype = "text/turtle"; // FIXME: teach  flysystem that .acl/.meta/.ttl means text/turtle
                 } else {
                     $mimetype = $filesystem->asMime($mime)->getMimetype($path);
                 }

@@ -98,6 +98,7 @@ class Server
         $this->filesystem = $filesystem;
         $this->graph = $graph ?? new Graph();
         $this->response = $response;
+        // @TODO: Mention \EasyRdf_Namespace::set('lm', 'https://purl.org/pdsinterop/link-metadata#');
     }
 
     final public function respondToRequest(Request $request): Response
@@ -280,6 +281,7 @@ class Server
 
 		try {
 			// Assuming this is in our native format, turtle
+            // @CHECKME: Does the Graph Parse here also need an URI?
 			$graph->parse($data, "turtle");
 			// FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
 			// FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
@@ -294,12 +296,14 @@ class Server
 					switch($command) {
 						case "INSERT":
 							// insert $triple(s) into $graph
+                            // @CHECKME: Does the Graph Parse here also need an URI?
 							$graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 
 						break;
 						case "DELETE":
 							// delete $triples from $graph
 							$deleteGraph = $this->getGraph();
+                            // @CHECKME: Does the Graph Parse here also need an URI?
 							$deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 							$resources = $deleteGraph->resources();
 							foreach ($resources as $resource) {
@@ -701,6 +705,7 @@ EOF;
     {
         // @FIXME: If a `.meta` file is requested, it must have header `Link: </path/to/resource>; rel="describes"`
 
+        //@CHECKME: Should the ACL link header be added here or in/by the Auth server?
         if ($this->hasAcl($path, $mime)) {
             $value = sprintf('<%s>; rel="acl"', $this->getAclPath($path, $mime));
             $response = $response->withAddedHeader('Link', $value);

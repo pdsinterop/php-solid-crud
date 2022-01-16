@@ -339,6 +339,7 @@ class Server
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$this->sendWebsocketUpdate($path);
 			}
 		} catch (EasyRdf_Exception $exception) {
@@ -385,6 +386,7 @@ class Server
             }
 
 			if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$response = $response->withHeader("Location", $this->baseUrl . $path);
 				$response = $response->withStatus(201);
 				$this->sendWebsocketUpdate($path);
@@ -420,6 +422,7 @@ class Server
 			$success = $filesystem->createDir($path);
             $response = $response->withStatus($success ? 201 : 500);
 			if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$this->sendWebsocketUpdate($path);
 			}
         }
@@ -507,6 +510,7 @@ class Server
             $success = $filesystem->update($path, $contents);
             $response = $response->withStatus($success ? 201 : 500);
 			if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$this->sendWebsocketUpdate($path);
 			}
         }
@@ -912,5 +916,62 @@ EOF;
         }
 
         return $path;
+    }
+
+    private function removeLinkFromMetaFileFor($path): bool
+    {
+        $result = false;
+
+        if ($this->hasDescribedBy($path)) {
+            $describedByPath = $this->getDescribedByPath($path);
+
+            $graph = $this->getGraph();
+
+            try {
+                $contents = $this->filesystem->read($describedByPath);
+                $graph->parse($contents, 'turtle', '/'.$describedByPath);
+            } catch (\Throwable $e) {
+                return false;
+            }
+
+            // A resource might be added for a folder but written to a file,
+            // or vice-versa. In both cases, the _other_ entry also needs to be
+            // removed. And depending on the RDF entry, the resource might have
+            // a leading slash or not, so that also needs to be checked.
+            $normalizedPath = trim($path, '/');
+            $resourcePaths = array_unique([
+                $normalizedPath,
+                $normalizedPath . '/',
+                '/' . $normalizedPath,
+                '/' . $normalizedPath . '/',
+            ]);
+
+            // @CHECKME: If an entry for a sub-folder is present but then a file is written,
+            //           removing the folder, should the sub-folder entry also be removed?
+
+            $changed = false;
+            foreach ($resourcePaths as $resourcePath) {
+                $resource = $graph->resource($resourcePath);
+
+                $predicates = $resource->propertyUris();
+                foreach ($predicates as $predicate) {
+                    if (strpos($predicate, 'https://purl.org/pdsinterop/link-metadata#') === 0) {
+                        $changed = true;
+                        $graph->deleteSingleProperty($resource, $predicate);
+                    }
+                }
+            }
+
+            if ($changed) {
+                $changedContents = $graph->serialise('turtle');
+                try {
+                    $result = $this->filesystem->update($describedByPath, $changedContents);
+                } catch (FileNotFoundException $exception) {
+                    // $result is already false;
+                }
+            }
+        }
+
+        return $result;
     }
 }

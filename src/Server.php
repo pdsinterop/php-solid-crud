@@ -838,6 +838,14 @@ EOF;
         $rdfPaths = array_keys($toRdfPhp);
         $foundPath = $this->findPath($rdfPaths, $path);
 
+        // If the requested path is a sub folder or file, it also needs te be handled
+        foreach ($rdfPaths as $rdfPath) {
+            if (strpos($rdfPath, $path) !== false) {
+                $foundPath = $rdfPath;
+                 break;
+            }
+        }
+
         if (isset($toRdfPhp[$foundPath])) {
             $filteredRdfData = array_filter($toRdfPhp[$foundPath], static function ($key) {
                 $uris = implode('|', [

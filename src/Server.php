@@ -825,7 +825,7 @@ EOF;
         $graph = $this->getGraph();
 
         try {
-            $graph->parse($describedByContents);
+            $graph->parse($describedByContents, null, '/'.$describedByPath);
         } catch (EasyRdf_Exception $exception) {
             throw Exception::create(self::ERROR_CAN_NOT_PARSE_METADATA, [$path]);
         }

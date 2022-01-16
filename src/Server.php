@@ -98,6 +98,7 @@ class Server
         $this->filesystem = $filesystem;
         $this->graph = $graph ?? new Graph();
         $this->response = $response;
+        // @TODO: Mention \EasyRdf_Namespace::set('lm', 'https://purl.org/pdsinterop/link-metadata#');
     }
 
     final public function respondToRequest(Request $request): Response
@@ -280,6 +281,7 @@ class Server
 
 		try {
 			// Assuming this is in our native format, turtle
+            // @CHECKME: Does the Graph Parse here also need an URI?
 			$graph->parse($data, "turtle");
 			// FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
 			// FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
@@ -294,12 +296,14 @@ class Server
 					switch($command) {
 						case "INSERT":
 							// insert $triple(s) into $graph
+                            // @CHECKME: Does the Graph Parse here also need an URI?
 							$graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 
 						break;
 						case "DELETE":
 							// delete $triples from $graph
 							$deleteGraph = $this->getGraph();
+                            // @CHECKME: Does the Graph Parse here also need an URI?
 							$deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 							$resources = $deleteGraph->resources();
 							foreach ($resources as $resource) {
@@ -339,6 +343,7 @@ class Server
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$this->sendWebsocketUpdate($path);
 			}
 		} catch (EasyRdf_Exception $exception) {
@@ -385,6 +390,7 @@ class Server
             }
 
 			if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$response = $response->withHeader("Location", $this->baseUrl . $path);
 				$response = $response->withStatus(201);
 				$this->sendWebsocketUpdate($path);
@@ -420,6 +426,7 @@ class Server
 			$success = $filesystem->createDir($path);
             $response = $response->withStatus($success ? 201 : 500);
 			if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$this->sendWebsocketUpdate($path);
 			}
         }
@@ -507,6 +514,7 @@ class Server
             $success = $filesystem->update($path, $contents);
             $response = $response->withStatus($success ? 201 : 500);
 			if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
 				$this->sendWebsocketUpdate($path);
 			}
         }
@@ -559,10 +567,8 @@ class Server
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
-                if (preg_match('/.ttl$/', $path)) {
-                    $mimetype = "text/turtle"; // FIXME: teach  flysystem that .ttl means text/turtle
-                } elseif (preg_match('/.acl$/', $path)) {
-                    $mimetype = "text/turtle"; // FIXME: teach flysystem that .acl files also want text/turtle
+                if (preg_match('/\.(acl|meta|ttl)$/', $path)) {
+                    $mimetype = "text/turtle"; // FIXME: teach  flysystem that .acl/.meta/.ttl means text/turtle
                 } else {
                     $mimetype = $filesystem->asMime($mime)->getMimetype($path);
                 }
@@ -572,6 +578,11 @@ class Server
                 if ($contents !== false) {
                     $response->getBody()->write($contents);
                     $response = $response->withHeader("Content-type", $mimetype)->withStatus(200);
+                } else {
+                    /*/ The file does exist in another format and no link-metadata is present /*/
+                    $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
+                    $response->getBody()->write($message);
+                    $response = $response->withStatus(404);
                 }
             } else {
                 /*/ The file does exist in another format and no link-metadata is present /*/
@@ -694,6 +705,7 @@ EOF;
     {
         // @FIXME: If a `.meta` file is requested, it must have header `Link: </path/to/resource>; rel="describes"`
 
+        //@CHECKME: Should the ACL link header be added here or in/by the Auth server?
         if ($this->hasAcl($path, $mime)) {
             $value = sprintf('<%s>; rel="acl"', $this->getAclPath($path, $mime));
             $response = $response->withAddedHeader('Link', $value);
@@ -815,22 +827,33 @@ EOF;
             $describedByPath = $this->filesystem->getMetadata($path)['describedby'] ?? '';
             $describedByContents = $this->filesystem->read($describedByPath);
         } catch (FileNotFoundException $e) {
-            // @CHECKME: If, for whatever reason, the file is not present after all... Do we care here?
+            // If, for whatever reason, the file is not present after all, the resource should still be returned (or a 404)
+            // @CHECKME: Should the upstream add a message to the header or something?
             return $linkMeta;
         }
 
         $graph = $this->getGraph();
 
         try {
-            $graph->parse($describedByContents);
+            $graph->parse($describedByContents, null, '/'.$describedByPath);
         } catch (EasyRdf_Exception $exception) {
-            throw Exception::create(self::ERROR_CAN_NOT_PARSE_METADATA, [$path]);
+            // If the metadata can not be parsed, the resource should still be returned (or a 404)
+            // @CHECKME: Should the upstream add a message to the header or something?
+            return $linkMeta;
         }
 
         $toRdfPhp = $graph->toRdfPhp();
 
         $rdfPaths = array_keys($toRdfPhp);
         $foundPath = $this->findPath($rdfPaths, $path);
+
+        // If the requested path is a sub folder or file, it also needs te be handled
+        foreach ($rdfPaths as $rdfPath) {
+            if (strpos($rdfPath, $path) !== false) {
+                $foundPath = $rdfPath;
+                 break;
+            }
+        }
 
         if (isset($toRdfPhp[$foundPath])) {
             $filteredRdfData = array_filter($toRdfPhp[$foundPath], static function ($key) {
@@ -855,12 +878,18 @@ EOF;
                 $value = array_pop($linkMetaValue);
                 $url = $value['value'] ?? null;
 
+                if (strpos($foundPath, './') === 0) {
+                    // Filepath is relative to the meta file
+                    $path = $foundPath;
+                }
+
                 if ($path !== $foundPath) {
                     // Change the path from the request to the redirect (or not found) path
                     $url = substr_replace($path,
                         $url,
                         strpos($path, $foundPath),
-                        strlen($foundPath));
+                        strlen($foundPath))
+                    ;
                 }
 
                 $linkMeta = [
@@ -885,12 +914,69 @@ EOF;
                 // @FIXME: We have no way of knowing if the file is a directory or a file.
                 //         This means that, unless we make a trialing slash `/` required,
                 //         (using the example for `forget.ttl`) forget.ttl/foo.txt will
-                //         also work although semantically is should not
+                //         also work although semantically it should not
                 $path = $rdfPath;
                 break;
             }
         }
 
         return $path;
+    }
+
+    private function removeLinkFromMetaFileFor($path): bool
+    {
+        $result = false;
+
+        if ($this->hasDescribedBy($path)) {
+            $describedByPath = $this->getDescribedByPath($path);
+
+            $graph = $this->getGraph();
+
+            try {
+                $contents = $this->filesystem->read($describedByPath);
+                $graph->parse($contents, 'turtle', '/'.$describedByPath);
+            } catch (\Throwable $e) {
+                return false;
+            }
+
+            // A resource might be added for a folder but written to a file,
+            // or vice-versa. In both cases, the _other_ entry also needs to be
+            // removed. And depending on the RDF entry, the resource might have
+            // a leading slash or not, so that also needs to be checked.
+            $normalizedPath = trim($path, '/');
+            $resourcePaths = array_unique([
+                $normalizedPath,
+                $normalizedPath . '/',
+                '/' . $normalizedPath,
+                '/' . $normalizedPath . '/',
+            ]);
+
+            // @CHECKME: If an entry for a sub-folder is present but then a file is written,
+            //           removing the folder, should the sub-folder entry also be removed?
+
+            $changed = false;
+            foreach ($resourcePaths as $resourcePath) {
+                $resource = $graph->resource($resourcePath);
+
+                $predicates = $resource->propertyUris();
+                foreach ($predicates as $predicate) {
+                    if (strpos($predicate, 'https://purl.org/pdsinterop/link-metadata#') === 0) {
+                        $changed = true;
+                        $graph->deleteSingleProperty($resource, $predicate);
+                    }
+                }
+            }
+
+            if ($changed) {
+                $changedContents = $graph->serialise('turtle');
+                try {
+                    $result = $this->filesystem->update($describedByPath, $changedContents);
+                } catch (FileNotFoundException $exception) {
+                    // $result is already false;
+                }
+            }
+        }
+
+        return $result;
     }
 }

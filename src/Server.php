@@ -570,6 +570,11 @@ class Server
                 if ($contents !== false) {
                     $response->getBody()->write($contents);
                     $response = $response->withHeader("Content-type", $mimetype)->withStatus(200);
+                } else {
+                    /*/ The file does exist in another format and no link-metadata is present /*/
+                    $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
+                    $response->getBody()->write($message);
+                    $response = $response->withStatus(404);
                 }
             } else {
                 /*/ The file does exist in another format and no link-metadata is present /*/

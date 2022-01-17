@@ -543,9 +543,13 @@ class Server
     private function handleReadRequest(Response $response, string $path, $contents, $mime=''): Response
     {
 		$filesystem = $this->filesystem;
-
 		if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
 			$contents = $this->listDirectoryAsTurtle($path);
+			$response->getBody()->write($contents);
+			$response = $response->withHeader("Content-type", "text/turtle");
+			$response = $response->withStatus(200);
+                } elseif(($filesystem->has($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
+			$contents = '';
 			$response->getBody()->write($contents);
 			$response = $response->withHeader("Content-type", "text/turtle");
 			$response = $response->withStatus(200);
@@ -579,10 +583,18 @@ class Server
                     $response->getBody()->write($contents);
                     $response = $response->withHeader("Content-type", $mimetype)->withStatus(200);
                 } else {
-                    /*/ The file does exist in another format and no link-metadata is present /*/
-                    $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
-                    $response->getBody()->write($message);
-                    $response = $response->withStatus(404);
+                    // FIXME: we should not get here if the file does not exist, but here we are. It looks like $filesystem->has("/.meta") always returns true even if the file does not exist;
+                    if ($path == "/.meta") {
+			$contents = '';
+			$response->getBody()->write($contents);
+			$response = $response->withHeader("Content-type", "text/turtle");
+			$response = $response->withStatus(200);
+                    } else {
+                        /*/ The file does exist in another format and no link-metadata is present /*/
+                        $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
+                        $response->getBody()->write($message);
+                        $response = $response->withStatus(404);
+                    }
                 }
             } else {
                 /*/ The file does exist in another format and no link-metadata is present /*/

@@ -17,11 +17,12 @@ class Server
 {
     ////////////////////////////// CLASS PROPERTIES \\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-	public const ERROR_CAN_NOT_PARSE_FOR_PATCH = 'Could not parse the requested resource for patching';
+    public const ERROR_CAN_NOT_PARSE_FOR_PATCH = 'Could not parse the requested resource for patching';
     public const ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER = 'Only empty containers can be deleted, "%s" is not empty';
     public const ERROR_CAN_NOT_PARSE_METADATA = 'Could not parse metadata for %s';
     public const ERROR_CAN_NOT_REDIRECT_WITHOUT_URL = "Cannot create %s: no URL set";
     public const ERROR_MISSING_SPARQL_CONTENT_TYPE = 'Request is missing required Content-Type "application/sparql-update" or "application/sparql-update-single-match"';
+    public const ERROR_UNHANDLED_PATCH_CONTENT_TYPE = 'Request uses an unhandled Content-Type';
     public const ERROR_MULTIPLE_LINK_METADATA_FOUND = 'More than one link-metadata found for %s';
     public const ERROR_NOT_IMPLEMENTED_SPARQL = 'SPARQL Not Implemented';
     public const ERROR_PATH_DOES_NOT_EXIST = 'Requested path "%s" does not exist';
@@ -104,10 +105,10 @@ class Server
     final public function respondToRequest(Request $request): Response
     {
         $path = $request->getUri()->getPath();
-		if ($this->basePath) {
-			$path = str_replace($this->basePath, "", $path);
-		}
-		$path = rawurldecode($path);
+        if ($this->basePath) {
+            $path = str_replace($this->basePath, "", $path);
+        }
+        $path = rawurldecode($path);
 
         // The path can also come from a 'Slug' header
         if ($path === '' && $request->hasHeader('Slug')) {
@@ -166,15 +167,15 @@ class Server
             break;
             case 'GET':
             case 'HEAD':
-				$mime = $this->getRequestedMimeType($request->getHeaderLine("Accept"));
+                $mime = $this->getRequestedMimeType($request->getHeaderLine("Accept"));
                 $response = $this->handleReadRequest($response, $path, $contents, $mime);
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
-					$response = $response->withStatus(204); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
-					if ($this->pubsub) {
-						$response = $response->withHeader("updates-via", $this->pubsub);
-					}
+                    $response = $response->withStatus(204); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
+                    if ($this->pubsub) {
+                        $response = $response->withHeader("updates-via", $this->pubsub);
+                    }
                 }
                 break;
 
@@ -186,79 +187,82 @@ class Server
                 break;
 
             case 'PATCH':
-				$contentType= $request->getHeaderLine("Content-Type");
-				switch($contentType) {
-					case "application/sparql-update":
+                $contentType= $request->getHeaderLine("Content-Type");
+                switch($contentType) {
+                    case "application/sparql-update":
                     case "application/sparql-update-single-match":
-						$response = $this->handleSparqlUpdate($response, $path, $contents);
-					break;
-					default:
-						$response->getBody()->write(self::ERROR_MISSING_SPARQL_CONTENT_TYPE);
-						$response = $response->withStatus(400);
-					break;
-				}
-			break;
+                        $response = $this->handleSparqlUpdate($response, $path, $contents);
+                    break;
+                    case "text/n3":
+                        $response = $this->handleN3Update($response, $path, $contents);
+		    break;
+                    default:
+                        $response->getBody()->write(self::ERROR_UNHANDLED_PATCH_CONTENT_TYPE);
+                        $response = $response->withStatus(400);
+                    break;
+                }
+            break;
             case 'POST':
-				$pathExists = $filesystem->has($path);
-				if ($pathExists) {
-					$mimetype = $filesystem->getMimetype($path);
-				}
-				if ($path === "/") {
-					$pathExists = true;
-					$mimetype = self::MIME_TYPE_DIRECTORY;
-				}
-				if ($pathExists === true) {
-					if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
-						$contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
-						$slug = $request->getHeaderLine("Slug");
-						if ($slug) {
-							$filename = $slug;
-						} else {
-							$filename = $this->guid();
-						}
-						// FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-						switch ($contentType) {
-							case '':
-								// FIXME: if no content type was passed, we should reject the request according to the spec;
-							break;
-							case "text/plain":
-								$filename .= ".txt";
-							break;
-							case "text/turtle":
-								$filename .= ".ttl";
-							break;
-							case "text/html":
-								$filename .= ".html";
-							break;
-							case "application/json":
-							case "application/ld+json":
-								$filename .= ".json";
-							break;
-						}
+                $pathExists = $filesystem->has($path);
+                if ($pathExists) {
+                    $mimetype = $filesystem->getMimetype($path);
+                }
+                if ($path === "/") {
+                    $pathExists = true;
+                    $mimetype = self::MIME_TYPE_DIRECTORY;
+                }
+                if ($pathExists === true) {
+                    if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
+                        $contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
+                        $slug = $request->getHeaderLine("Slug");
+                        if ($slug) {
+                            $filename = $slug;
+                        } else {
+                            $filename = $this->guid();
+                        }
+                        // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
+                        switch ($contentType) {
+                            case '':
+                                // FIXME: if no content type was passed, we should reject the request according to the spec;
+                            break;
+                            case "text/plain":
+                                $filename .= ".txt";
+                            break;
+                            case "text/turtle":
+                                $filename .= ".ttl";
+                            break;
+                            case "text/html":
+                                $filename .= ".html";
+                            break;
+                            case "application/json":
+                            case "application/ld+json":
+                                $filename .= ".json";
+                            break;
+                        }
 
-						$response = $this->handleCreateRequest($response, $path . $filename, $contents);
-					} else {
-						$response = $this->handleUpdateRequest($response, $path, $contents);
-					}
-				} else {
-					$response = $this->handleCreateRequest($response, $path, $contents);
-				}
-			break;
+                        $response = $this->handleCreateRequest($response, $path . $filename, $contents);
+                    } else {
+                        $response = $this->handleUpdateRequest($response, $path, $contents);
+                    }
+                } else {
+                    $response = $this->handleCreateRequest($response, $path, $contents);
+                }
+            break;
             case 'PUT':
-				$link = $request->getHeaderLine("Link");
-				switch ($link) {
-					case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
-						$response = $this->handleCreateDirectoryRequest($response, $path);
-					break;
-					default:
-						if ($filesystem->has($path) === true) {
-							$response = $this->handleUpdateRequest($response, $path, $contents);
-						} else {
-							$response = $this->handleCreateRequest($response, $path, $contents);
-						}
-					break;
-				}
-			break;
+                $link = $request->getHeaderLine("Link");
+                switch ($link) {
+                    case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
+                        $response = $this->handleCreateDirectoryRequest($response, $path);
+                    break;
+                    default:
+                        if ($filesystem->has($path) === true) {
+                            $response = $this->handleUpdateRequest($response, $path, $contents);
+                        } else {
+                            $response = $this->handleCreateRequest($response, $path, $contents);
+                        }
+                    break;
+                }
+            break;
             default:
                 throw Exception::create(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
                 break;
@@ -267,95 +271,179 @@ class Server
         return $response;
     }
 
-	private function handleSparqlUpdate(Response $response, string $path, $contents): Response
-	{
+    private function handleSparqlUpdate(Response $response, string $path, $contents): Response
+    {
         $filesystem = $this->filesystem;
-		$graph = $this->getGraph();
+        $graph = $this->getGraph();
 
         if ($filesystem->has($path) === false) {
-			$data = '';
-		} else {
-			// read ttl data
-			$data = $filesystem->read($path);
-		}
+            $data = '';
+        } else {
+            // read ttl data
+            $data = $filesystem->read($path);
+        }
 
-		try {
-			// Assuming this is in our native format, turtle
+        try {
+            // Assuming this is in our native format, turtle
             // @CHECKME: Does the Graph Parse here also need an URI?
-			$graph->parse($data, "turtle");
-			// FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
-			// FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
+            $graph->parse($data, "turtle");
+            // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
+            // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
-			// parse query in contents
-			if (preg_match_all("/((INSERT|DELETE).*{([^}]*)})+/", $contents, $matches, PREG_SET_ORDER)) {
-				foreach ($matches as $match) {
-					$command = $match[2];
-					$triples = $match[3];
+            // parse query in contents
+            if (preg_match_all("/((INSERT|DELETE).*{([^}]*)})+/", $contents, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $command = $match[2];
+                    $triples = $match[3];
 
-					// apply changes to ttl data
-					switch($command) {
-						case "INSERT":
-							// insert $triple(s) into $graph
+                    // apply changes to ttl data
+                    switch($command) {
+                        case "INSERT":
+                            // insert $triple(s) into $graph
                             // @CHECKME: Does the Graph Parse here also need an URI?
-							$graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+                            $graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
 
-						break;
-						case "DELETE":
-							// delete $triples from $graph
-							$deleteGraph = $this->getGraph();
+                        break;
+                        case "DELETE":
+                            // delete $triples from $graph
+                            $deleteGraph = $this->getGraph();
                             // @CHECKME: Does the Graph Parse here also need an URI?
-							$deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
-							$resources = $deleteGraph->resources();
-							foreach ($resources as $resource) {
-								$properties = $resource->propertyUris();
-								foreach ($properties as $property) {
-									$values = $resource->all($property);
-									if (!count($values)) {
-										$graph->delete($resource, $property);
-									} else {
-										foreach ($values as $value) {
-											$count = $graph->delete($resource, $property, $value);
-											if ($count === 0) {
-												throw new Exception("Could not delete a value", 500);
-											}
-										}
-									}
-								}
-							}
-						break;
-						default:
-							throw new Exception("Unimplemented SPARQL", 500);
-						break;
-					}
-				}
-			}
+                            $deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+                            $resources = $deleteGraph->resources();
+                            foreach ($resources as $resource) {
+                                $properties = $resource->propertyUris();
+                                foreach ($properties as $property) {
+                                    $values = $resource->all($property);
+                                    if (!count($values)) {
+                                        $graph->delete($resource, $property);
+                                    } else {
+                                        foreach ($values as $value) {
+                                            $count = $graph->delete($resource, $property, $value);
+                                            if ($count === 0) {
+                                                throw new Exception("Could not delete a value", 500);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        break;
+                        default:
+                            throw new Exception("Unimplemented SPARQL", 500);
+                        break;
+                    }
+                }
+            }
 
-			// Assuming this is in our native format, turtle
-			$output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
-			// write ttl data
+            // Assuming this is in our native format, turtle
+            $output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
+            // write ttl data
 
-			if ($filesystem->has($path) === true) {
-				$success = $filesystem->update($path, $output);
+            if ($filesystem->has($path) === true) {
+                $success = $filesystem->update($path, $output);
             } else {
-				$success = $filesystem->write($path, $output);
+                $success = $filesystem->write($path, $output);
             }
 
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-				$this->sendWebsocketUpdate($path);
-			}
-		} catch (EasyRdf_Exception $exception) {
-			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
-			$response = $response->withStatus(501);
-		} catch (Throwable $exception) {
-			$response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
-			$response = $response->withStatus(501);
-		}
+                $this->sendWebsocketUpdate($path);
+            }
+        } catch (EasyRdf_Exception $exception) {
+            $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
+            $response = $response->withStatus(501);
+        } catch (Throwable $exception) {
+            $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
+            $response = $response->withStatus(501);
+        }
 
-		return $response;
-	}
+        return $response;
+    }
+
+    private function handleN3Update(Response $response, string $path, $contents): Response
+    {
+        $filesystem = $this->filesystem;
+        $graph = $this->getGraph();
+        $n3Graph = $this->getGraph();
+        
+        if ($filesystem->has($path) === false) {
+            $data = '';
+        } else {
+            // read ttl data
+            $data = $filesystem->read($path);
+        }
+
+        try {
+            // Assuming this is in our native format, turtle
+            // @CHECKME: Does the Graph Parse here also need an URI?
+            $graph->parse($data, "turtle");
+            // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
+            // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
+
+            $n3Graph->parse($contents, "ntriples");
+            $matching = $n3Graph->resourcesMatching('http://www.w3.org/ns/solid/terms#InsertDeletePatch');
+            foreach ($matching as $match) {
+                $inserts = $match->all('<http://www.w3.org/ns/solid/terms#inserts>');
+                $deletes = $match->all('<http://www.w3.org/ns/solid/terms#deletes>');
+                // FIXME: do we need to so patches as well?
+                // $patches = $match->all('<http://www.w3.org/ns/solid/terms#patches>');
+                
+                foreach ($inserts as $triples) {
+                    $graph->parse($triples, "turtle");
+                }
+                foreach ($deletes as $triples) {
+		    $deleteGraph = $this->getGraph();
+		    // @CHECKME: Does the Graph Parse here also need an URI?
+		    $deleteGraph->parse($triples, "ntriples"); 
+		    $resources = $deleteGraph->resources();
+		    foreach ($resources as $resource) {
+			$properties = $resource->propertyUris();
+			foreach ($properties as $property) {
+			    $values = $resource->all($property);
+			    if (!count($values)) {
+				$graph->delete($resource, $property);
+			    } else {
+				foreach ($values as $value) {
+				    $count = $graph->delete($resource, $property, $value);
+				    if ($count === 0) {
+					throw new Exception("Could not delete a value", 500);
+				    }
+				}
+			    }
+			}
+		    }
+                }
+                // FIXME: Is there a 'patches'? What does it look like and how do we handle it?
+            }
+
+            // Assuming this is in our native format, turtle
+            $output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
+            // write ttl data
+
+            if ($filesystem->has($path) === true) {
+                $success = $filesystem->update($path, $output);
+            } else {
+                $success = $filesystem->write($path, $output);
+            }
+
+            $response = $response->withStatus($success ? 201 : 500);
+
+            if ($success) {
+                $this->removeLinkFromMetaFileFor($path);
+                $this->sendWebsocketUpdate($path);
+            }
+        } catch (EasyRdf_Exception $exception) {
+            $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
+            $response = $response->withStatus(501);
+        } catch (Throwable $exception) {
+            $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
+            $response = $response->withStatus(501);
+        }
+
+        return $response;
+    }
+
 
     private function handleCreateRequest(Response $response, string $path, $contents): Response
     {
@@ -389,31 +477,31 @@ class Server
                 restore_error_handler();
             }
 
-			if ($success) {
+            if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-				$response = $response->withHeader("Location", $this->baseUrl . $path);
-				$response = $response->withStatus(201);
-				$this->sendWebsocketUpdate($path);
-			} else {
-				$response = $response->withStatus(500);
-			}
+                $response = $response->withHeader("Location", $this->baseUrl . $path);
+                $response = $response->withStatus(201);
+                $this->sendWebsocketUpdate($path);
+            } else {
+                $response = $response->withStatus(500);
+            }
         }
 
         return $response;
-	}
+    }
 
-	private function parentPath($path)
-	{
-		if ($path === "/") {
-			return "/";
-		}
-		$pathicles = explode("/", $path);
-		$end = array_pop($pathicles);
-		if ($end === "") {
-			array_pop($pathicles);
-		}
-		return implode("/", $pathicles) . "/";
-	}
+    private function parentPath($path)
+    {
+        if ($path === "/") {
+            return "/";
+        }
+        $pathicles = explode("/", $path);
+        $end = array_pop($pathicles);
+        if ($end === "") {
+            array_pop($pathicles);
+        }
+        return implode("/", $pathicles) . "/";
+    }
 
     private function handleCreateDirectoryRequest(Response $response, string $path): Response
     {
@@ -423,33 +511,33 @@ class Server
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-			$success = $filesystem->createDir($path);
+            $success = $filesystem->createDir($path);
             $response = $response->withStatus($success ? 201 : 500);
-			if ($success) {
+            if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-				$this->sendWebsocketUpdate($path);
-			}
+                $this->sendWebsocketUpdate($path);
+            }
         }
 
         return $response;
-	}
+    }
 
-	private function sendWebsocketUpdate($path)
+    private function sendWebsocketUpdate($path)
     {
-		$pubsub = $this->pubsub;
-		if (!$pubsub) {
-			return; // no pubsub server available, don't even try;
-		}
+        $pubsub = $this->pubsub;
+        if (!$pubsub) {
+            return; // no pubsub server available, don't even try;
+        }
 
         $pubsub = str_replace(["https://", "http://"], "ws://", $pubsub);
 
         $baseUrl = $this->baseUrl;
 
-		$client = new Client($pubsub, array(
-			'headers' => array(
-				'Sec-WebSocket-Protocol' => 'solid-0.1'
-			)
-		));
+        $client = new Client($pubsub, array(
+            'headers' => array(
+                'Sec-WebSocket-Protocol' => 'solid-0.1'
+            )
+        ));
 
         try {
             $client->send("pub $baseUrl$path\n");
@@ -461,7 +549,7 @@ class Server
         } catch (\WebSocket\Exception $exception) {
             throw new Exception('Could not write to pub-sup server', 502, $exception);
         }
-	}
+    }
 
     private function handleDeleteRequest(Response $response, string $path, $contents): Response
     {
@@ -471,24 +559,24 @@ class Server
             $mimetype = $filesystem->getMimetype($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-				$directoryContents = $filesystem->listContents($path, true);
+                $directoryContents = $filesystem->listContents($path, true);
                 if (count($directoryContents) > 0) {
                     $status = 400;
                     $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
                     $response->getBody()->write($message);
                 } else {
                     $success = $filesystem->deleteDir($path);
-					if ($success) {
-						$this->sendWebsocketUpdate($path);
-					}
+                    if ($success) {
+                        $this->sendWebsocketUpdate($path);
+                    }
 
                     $status = $success ? 204 : 500;
                 }
             } else {
                 $success = $filesystem->delete($path);
-				if ($success) {
-					$this->sendWebsocketUpdate($path);
-				}
+                if ($success) {
+                    $this->sendWebsocketUpdate($path);
+                }
                 $status = $success ? 204 : 500;
             }
 
@@ -513,47 +601,47 @@ class Server
         } else {
             $success = $filesystem->update($path, $contents);
             $response = $response->withStatus($success ? 201 : 500);
-			if ($success) {
+            if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-				$this->sendWebsocketUpdate($path);
-			}
+                $this->sendWebsocketUpdate($path);
+            }
         }
 
         return $response;
     }
 
-	private function getRequestedMimeType($accept)
+    private function getRequestedMimeType($accept)
     {
-		// text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
-		$mimes = explode(",", $accept);
-		foreach ($mimes as $mime) {
+        // text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+        $mimes = explode(",", $accept);
+        foreach ($mimes as $mime) {
                         $parts = explode(";", $mime);
                         $mimeInfo = $parts[0];
-			switch ($mimeInfo) {
-				case "text/turtle": // turtle
-				case "application/ld+json": //json
-				case "application/rdf+xml": //rdf
-					return $mimeInfo;
-				break;
-			}
-		}
-		return '';
-	}
+            switch ($mimeInfo) {
+                case "text/turtle": // turtle
+                case "application/ld+json": //json
+                case "application/rdf+xml": //rdf
+                    return $mimeInfo;
+                break;
+            }
+        }
+        return '';
+    }
 
     private function handleReadRequest(Response $response, string $path, $contents, $mime=''): Response
     {
-		$filesystem = $this->filesystem;
-		if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
-			$contents = $this->listDirectoryAsTurtle($path);
-			$response->getBody()->write($contents);
-			$response = $response->withHeader("Content-type", "text/turtle");
-			$response = $response->withStatus(200);
+        $filesystem = $this->filesystem;
+        if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+            $contents = $this->listDirectoryAsTurtle($path);
+            $response->getBody()->write($contents);
+            $response = $response->withHeader("Content-type", "text/turtle");
+            $response = $response->withStatus(200);
                 } elseif(($filesystem->has($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
-			$contents = '';
-			$response->getBody()->write($contents);
-			$response = $response->withHeader("Content-type", "text/turtle");
-			$response = $response->withStatus(200);
-		} elseif ($filesystem->has($path) === false && $this->hasDescribedBy($path) === false) {
+            $contents = '';
+            $response->getBody()->write($contents);
+            $response = $response->withHeader("Content-type", "text/turtle");
+            $response = $response->withStatus(200);
+        } elseif ($filesystem->has($path) === false && $this->hasDescribedBy($path) === false) {
             /*/ The file does not exist and no link-metadata is present /*/
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
@@ -585,10 +673,10 @@ class Server
                 } else {
                     // FIXME: we should not get here if the file does not exist, but here we are. It looks like $filesystem->has("/.meta") always returns true even if the file does not exist;
                     if ($path == "/.meta") {
-			$contents = '';
-			$response->getBody()->write($contents);
-			$response = $response->withHeader("Content-type", "text/turtle");
-			$response = $response->withStatus(200);
+            $contents = '';
+            $response->getBody()->write($contents);
+            $response = $response->withHeader("Content-type", "text/turtle");
+            $response = $response->withStatus(200);
                     } else {
                         /*/ The file does exist in another format and no link-metadata is present /*/
                         $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
@@ -607,39 +695,39 @@ class Server
         return $response;
     }
 
-	private function guid()
+    private function guid()
     {
-		return sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(16384, 20479), mt_rand(32768, 49151), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535));
-	}
+        return sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(16384, 20479), mt_rand(32768, 49151), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535));
+    }
 
-	private function listDirectoryAsTurtle($path)
+    private function listDirectoryAsTurtle($path)
     {
         $filesystem = $this->filesystem;
-		if ($path === "/") {
-			$listContents = $filesystem->listContents(".");// FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
-		} else {
-			$listContents = $filesystem->listContents($path);
-		}
-		// CHECKME: maybe structure this data als RDF/PHP
-		// https://www.easyrdf.org/docs/rdf-formats-php
+        if ($path === "/") {
+            $listContents = $filesystem->listContents(".");// FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+        } else {
+            $listContents = $filesystem->listContents($path);
+        }
+        // CHECKME: maybe structure this data als RDF/PHP
+        // https://www.easyrdf.org/docs/rdf-formats-php
 
         // @FIXME: The $name variable is declared here but never used. Should it be removed or is there a bug further down?
-		$name = basename($path) . ":";
-		// turtle syntax doesn't allow labels that start with a number, so prefix it if it does;
-		if (preg_match("/^\d/", $name)) {
-			$name = "container-" . $name;
-		}
+        $name = basename($path) . ":";
+        // turtle syntax doesn't allow labels that start with a number, so prefix it if it does;
+        if (preg_match("/^\d/", $name)) {
+            $name = "container-" . $name;
+        }
 
-		$turtle = array(
-			"<>" => array(
-				"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),
-				"ldp:contains" => array()
-			)
-		);
+        $turtle = array(
+            "<>" => array(
+                "a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),
+                "ldp:contains" => array()
+            )
+        );
 
-		foreach ($listContents as $item) {
-			switch($item['type']) {
-				case "file":
+        foreach ($listContents as $item) {
+            switch($item['type']) {
+                case "file":
                     // ACL and meta files should not be listed in directory overview
                     if (
                         $item['basename'] !== '.meta'
@@ -665,42 +753,42 @@ class Server
                             $turtle["<>"]['ldp:contains'][] = $filename;
                         }
                     }
-				break;
-				case "dir":
-					// FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.
-					$filename = "<" . rawurlencode($item['basename']) . "/>";
-					$turtle[$filename] = array(
-						"a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource")
-					);
-					$turtle["<>"]['ldp:contains'][] = $filename;
-				break;
-				default:
-					throw new Exception("Unknown type", 500);
-				break;
-			}
-		}
+                break;
+                case "dir":
+                    // FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.
+                    $filename = "<" . rawurlencode($item['basename']) . "/>";
+                    $turtle[$filename] = array(
+                        "a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource")
+                    );
+                    $turtle["<>"]['ldp:contains'][] = $filename;
+                break;
+                default:
+                    throw new Exception("Unknown type", 500);
+                break;
+            }
+        }
 
-		$container = <<< EOF
+        $container = <<< EOF
 @prefix : <#>.
 @prefix ldp: <http://www.w3.org/ns/ldp#>.
 
 EOF;
 
-		foreach ($turtle as $name => $item) {
-			$container .= "\n$name\n";
-			$lines = [];
-			foreach ($item as $property => $values) {
-				if (count($values)) {
-					$lines[] = "\t" . $property . " " . implode(", ", $values);
-				}
-			}
+        foreach ($turtle as $name => $item) {
+            $container .= "\n$name\n";
+            $lines = [];
+            foreach ($item as $property => $values) {
+                if (count($values)) {
+                    $lines[] = "\t" . $property . " " . implode(", ", $values);
+                }
+            }
 
-			$container .= implode(";\n", $lines);
-			$container .= ".\n";
-		}
+            $container .= implode(";\n", $lines);
+            $container .= ".\n";
+        }
 
-		return $container;
-	}
+        return $container;
+    }
 
     // =========================================================================
     // @TODO: All Auxiliary Resources logic should probably be moved to a separate class.

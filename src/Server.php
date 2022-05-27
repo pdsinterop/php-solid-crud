@@ -2,8 +2,8 @@
 
 namespace Pdsinterop\Solid\Resources;
 
-use EasyRdf_Exception;
-use EasyRdf_Graph as Graph;
+use EasyRdf\Exception as RdfException;
+use EasyRdf\Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FileExistsException;
 use League\Flysystem\FileNotFoundException;
@@ -350,7 +350,7 @@ class Server
                 $this->removeLinkFromMetaFileFor($path);
                 $this->sendWebsocketUpdate($path);
             }
-        } catch (EasyRdf_Exception $exception) {
+        } catch (RdfException $exception) {
             $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
             $response = $response->withStatus(501);
         } catch (Throwable $exception) {
@@ -433,7 +433,7 @@ class Server
                 $this->removeLinkFromMetaFileFor($path);
                 $this->sendWebsocketUpdate($path);
             }
-        } catch (EasyRdf_Exception $exception) {
+        } catch (RdfException $exception) {
             $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
             $response = $response->withStatus(501);
         } catch (Throwable $exception) {
@@ -936,7 +936,7 @@ EOF;
 
         try {
             $graph->parse($describedByContents, null, '/'.$describedByPath);
-        } catch (EasyRdf_Exception $exception) {
+        } catch (RdfException $exception) {
             // If the metadata can not be parsed, the resource should still be returned (or a 404)
             // @CHECKME: Should the upstream add a message to the header or something?
             return $linkMeta;

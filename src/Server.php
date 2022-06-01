@@ -397,44 +397,38 @@ class Server
 
     private function n3Convert($contents) {
         $parsedGraph = $this->normalizeN3($contents);
-        $inserts = [];
+        $result = array();
         foreach ($parsedGraph[':root'] as $subject) {
-            if (
-                isset($subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type']) &&
-                (in_array('http://www.w3.org/ns/solid/terms#InsertDeletePatch', $subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type'])) &&
-                isset($subject['http://www.w3.org/ns/solid/terms#inserts'])
-            ) {
-                foreach ($subject['http://www.w3.org/ns/solid/terms#inserts'] as $target) {
-                    $inserts[] = $parsedGraph[$target];
+            if (in_array('http://www.w3.org/ns/solid/terms#InsertDeletePatch', $subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type'])) {
+                foreach ($subject as $predicate => $value) {
+                    switch ($predicate) {
+                        case 'http://www.w3.org/ns/solid/terms#inserts':
+                            foreach ($value as $target) {
+                                if (!isset($result['insert'])) {
+                                    $result['insert'] = array();
+                                }
+                                $result['insert'][] = $parsedGraph[$target];
+                            }
+                        break;
+                        case 'http://www.w3.org/ns/solid/terms#deletes':
+                            foreach ($value as $target) {
+                                if (!isset($result['delete'])) {
+                                    $result['delete'] = array();
+                                }
+                                $result['delete'][] = $parsedGraph[$target];
+                            }
+                        break;
+                    }
                 }
             }
         }
 
-        $deletes = [];
-        foreach ($parsedGraph[':root'] as $subject) {
-            if (
-                isset($subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type']) &&
-                (in_array('http://www.w3.org/ns/solid/terms#InsertDeletePatch', $subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type'])) &&
-                isset($subject['http://www.w3.org/ns/solid/terms#deletes'])
-            ) {
-                foreach ($subject['http://www.w3.org/ns/solid/terms#deletes'] as $target) {
-                    $deletes[] = $parsedGraph[$target];
-                }
-            }
+        foreach ($result as $key => $value) {
+            $writer = new TriGWriter(["format" => "turtle"]);
+            $writer->addTriples($value);
+            $result[$key] = $writer->end();
         }
-
-        $writer = new TriGWriter(["format" => "turtle"]);
-        $writer->addTriples($inserts);
-        $insertTurtle = $writer->end();
-
-        $writer = new TriGWriter(["format" => "turtle"]);
-        $writer->addTriples($deletes);
-        $deleteTurtle = $writer->end();
-
-        return array(
-            "insert" => $insertTurtle ?? "",
-            "delete" => $deleteTurtle ?? ""
-        );
+        return $result;
     }
 
     private function handleN3Update(Response $response, string $path, $contents): Response
@@ -457,34 +451,40 @@ class Server
             // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
             $instructions = $this->n3Convert($contents);
+            foreach ($instructions as $key => $value) {
+                switch ($key) {
+                    case "insert":
+                        // error_log("INSERT");
+                        // error_log($instructions['insert']);
+                        $graph->parse($instructions['insert'], "turtle");
+                    break;
+                    case "delete":
+                        $deleteGraph = $this->getGraph();
+                        // error_log("DELETE");
+                        // error_log($instructions['delete']);
 
-            // error_log("INSERT");
-            // error_log($instructions['insert']);
-            $graph->parse($instructions['insert']);
-
-            $deleteGraph = $this->getGraph();
-            // error_log("DELETE");
-            // error_log($instructions['delete']);
-
-            // @CHECKME: Does the Graph Parse here also need an URI?
-            $deleteGraph->parse($instructions['delete'], "turtle");
-            $resources = $deleteGraph->resources();
-            foreach ($resources as $resource) {
-                $properties = $resource->propertyUris();
-                foreach ($properties as $property) {
-                    $values = $resource->all($property);
-                    if (!count($values)) {
-                        $graph->delete($resource, $property);
-                    } else {
-                        foreach ($values as $value) {
-                            $count = $graph->delete($resource, $property, $value);
-                            if ($count === 0) {
-                                throw new Exception("Could not delete a value", 500);
+                        // @CHECKME: Does the Graph Parse here also need an URI?
+                        $deleteGraph->parse($instructions['delete'], "turtle");
+                        $resources = $deleteGraph->resources();
+                        foreach ($resources as $resource) {
+                            $properties = $resource->propertyUris();
+                            foreach ($properties as $property) {
+                                $values = $resource->all($property);
+                                if (!count($values)) {
+                                    $graph->delete($resource, $property);
+                                } else {
+                                    foreach ($values as $value) {
+                                        $count = $graph->delete($resource, $property, $value);
+                                        if ($count === 0) {
+                                            throw new Exception("Could not delete a value", 500);
+                                        }
+                                    }
+                                }
                             }
+                            // FIXME: Is there a 'patches'? What does it look like and how do we handle it?
                         }
-                    }
+                    break;
                 }
-                // FIXME: Is there a 'patches'? What does it look like and how do we handle it?
             }
 
             // Assuming this is in our native format, turtle

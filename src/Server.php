@@ -12,6 +12,8 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Throwable;
 use WebSocket\Client;
+use pietercolpaert\hardf\TriGWriter;
+use pietercolpaert\hardf\TriGParser;
 
 class Server
 {
@@ -195,7 +197,7 @@ class Server
                     break;
                     case "text/n3":
                         $response = $this->handleN3Update($response, $path, $contents);
-		    break;
+                    break;
                     default:
                         $response->getBody()->write(self::ERROR_UNHANDLED_PATCH_CONTENT_TYPE);
                         $response = $response->withStatus(400);
@@ -361,12 +363,86 @@ class Server
         return $response;
     }
 
+    private function normalizeN3($contents) {
+        $parser = new TriGParser(["format" => "n3"]);
+        $triples = $parser->parse($contents);
+        $parsedGraph = [];
+        foreach ($triples as $key => $value) {
+            $graph = $value['graph'];
+            $subject = $value['subject'];
+            $predicate = $value['predicate'];
+            $object = $value['object'];
+
+            if ($graph == '') {
+                $graph = ':root';
+            }
+            if ($graph != ':root') {
+                $value['graph'] = '';
+                $parsedGraph[$graph] = $value;
+            } else {
+                if (!isset($parsedGraph[$graph])) {
+                    $parsedGraph[$graph] = [];
+                }
+                if (!isset($parsedGraph[$graph][$subject])) {
+                    $parsedGraph[$graph][$subject] = [];
+                }
+                if (!isset($parsedGraph[$graph][$subject][$predicate])) {
+                    $parsedGraph[$graph][$subject][$predicate] = [];
+                }
+                $parsedGraph[$graph][$subject][$predicate][] = $object;
+            }
+        }
+        return $parsedGraph;
+    }
+
+    private function n3Convert($contents) {
+        $parsedGraph = $this->normalizeN3($contents);
+        $inserts = [];
+        foreach ($parsedGraph[':root'] as $subject) {
+            if (
+                isset($subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type']) &&
+                (in_array('http://www.w3.org/ns/solid/terms#InsertDeletePatch', $subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type'])) &&
+                isset($subject['http://www.w3.org/ns/solid/terms#inserts'])
+            ) {
+                foreach ($subject['http://www.w3.org/ns/solid/terms#inserts'] as $target) {
+                    $inserts[] = $parsedGraph[$target];
+                }
+            }
+        }
+
+        $deletes = [];
+        foreach ($parsedGraph[':root'] as $subject) {
+            if (
+                isset($subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type']) &&
+                (in_array('http://www.w3.org/ns/solid/terms#InsertDeletePatch', $subject['http://www.w3.org/1999/02/22-rdf-syntax-ns#type'])) &&
+                isset($subject['http://www.w3.org/ns/solid/terms#deletes'])
+            ) {
+                foreach ($subject['http://www.w3.org/ns/solid/terms#deletes'] as $target) {
+                    $deletes[] = $parsedGraph[$target];
+                }
+            }
+        }
+
+        $writer = new TriGWriter(["format" => "turtle"]);
+        $writer->addTriples($inserts);
+        $insertTurtle = $writer->end();
+
+        $writer = new TriGWriter(["format" => "turtle"]);
+        $writer->addTriples($deletes);
+        $deleteTurtle = $writer->end();
+
+        return array(
+            "insert" => $insertTurtle ?? "",
+            "delete" => $deleteTurtle ?? ""
+        );
+    }
+
     private function handleN3Update(Response $response, string $path, $contents): Response
     {
         $filesystem = $this->filesystem;
         $graph = $this->getGraph();
         $n3Graph = $this->getGraph();
-        
+
         if ($filesystem->has($path) === false) {
             $data = '';
         } else {
@@ -380,39 +456,33 @@ class Server
             $graph->parse($data, "turtle");
             // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
+            $instructions = $this->n3Convert($contents);
 
-            $n3Graph->parse($contents, "ntriples");
-            $matching = $n3Graph->resourcesMatching('http://www.w3.org/ns/solid/terms#InsertDeletePatch');
-            foreach ($matching as $match) {
-                $inserts = $match->all('<http://www.w3.org/ns/solid/terms#inserts>');
-                $deletes = $match->all('<http://www.w3.org/ns/solid/terms#deletes>');
-                // FIXME: do we need to so patches as well?
-                // $patches = $match->all('<http://www.w3.org/ns/solid/terms#patches>');
-                
-                foreach ($inserts as $triples) {
-                    $graph->parse($triples, "turtle");
-                }
-                foreach ($deletes as $triples) {
-		    $deleteGraph = $this->getGraph();
-		    // @CHECKME: Does the Graph Parse here also need an URI?
-		    $deleteGraph->parse($triples, "ntriples"); 
-		    $resources = $deleteGraph->resources();
-		    foreach ($resources as $resource) {
-			$properties = $resource->propertyUris();
-			foreach ($properties as $property) {
-			    $values = $resource->all($property);
-			    if (!count($values)) {
-				$graph->delete($resource, $property);
-			    } else {
-				foreach ($values as $value) {
-				    $count = $graph->delete($resource, $property, $value);
-				    if ($count === 0) {
-					throw new Exception("Could not delete a value", 500);
-				    }
-				}
-			    }
-			}
-		    }
+            // error_log("INSERT");
+            // error_log($instructions['insert']);
+            $graph->parse($instructions['insert']);
+
+            $deleteGraph = $this->getGraph();
+            // error_log("DELETE");
+            // error_log($instructions['delete']);
+
+            // @CHECKME: Does the Graph Parse here also need an URI?
+            $deleteGraph->parse($instructions['delete'], "turtle");
+            $resources = $deleteGraph->resources();
+            foreach ($resources as $resource) {
+                $properties = $resource->propertyUris();
+                foreach ($properties as $property) {
+                    $values = $resource->all($property);
+                    if (!count($values)) {
+                        $graph->delete($resource, $property);
+                    } else {
+                        foreach ($values as $value) {
+                            $count = $graph->delete($resource, $property, $value);
+                            if ($count === 0) {
+                                throw new Exception("Could not delete a value", 500);
+                            }
+                        }
+                    }
                 }
                 // FIXME: Is there a 'patches'? What does it look like and how do we handle it?
             }

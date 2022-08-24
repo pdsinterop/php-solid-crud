@@ -23,6 +23,7 @@
     "league/flysystem": "^1.0",
     "mjrider/flysystem-factory": "^0.7",
     "pdsinterop/flysystem-rdf": "^0.5",
+    "pietercolpaert/hardf": "^0.3",
     "psr/http-factory": "^1.0",
     "psr/http-message": "^1.0",
     "textalk/websocket": "^1.5"

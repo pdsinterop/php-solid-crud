@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.6.0](https://github.com/pdsinterop/php-solid-crud/tree/v0.6.0) (2022-08-24)
+
+[Full Changelog](https://github.com/pdsinterop/php-solid-crud/compare/v0.6.0...v0.6.0)
+
+### Pull request(s) without label
+
+- Feature/nextcloud24 [\#16](https://github.com/pdsinterop/php-solid-crud/pull/16) (@ylebre)
+- WIP: adding support for text/n3 patches [\#15](https://github.com/pdsinterop/php-solid-crud/pull/15) (@ylebre)
+
 ## [v0.5.1](https://github.com/pdsinterop/php-solid-crud/tree/v0.5.1) (2022-01-16)
 
 [Full Changelog](https://github.com/pdsinterop/php-solid-crud/compare/v0.5.0...v0.5.1)

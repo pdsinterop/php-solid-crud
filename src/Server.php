@@ -11,7 +11,6 @@ use League\Flysystem\FilesystemInterface as Filesystem;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Throwable;
-use WebSocket\Client;
 use pietercolpaert\hardf\TriGWriter;
 use pietercolpaert\hardf\TriGParser;
 
@@ -55,8 +54,8 @@ class Server
     private $filesystem;
     /** @var Graph */
     private $graph;
-    /** @var string */
-    private $pubsub;
+    /** @var SolidNotificationInterface */
+    private $notifications;
     /** @var Response */
     private $response;
 
@@ -85,11 +84,10 @@ class Server
         $this->basePath = $serverRequest->getUri()->getPath();
     }
 
-    final public function setPubSubUrl($url)
+    final public function setNotifications(SolidNotificationInterface $notifications)
     {
-        $this->pubsub = $url;
+        $this->notifications = $notifications;
     }
-
     //////////////////////////////// PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     // @TODO: The Graph should be injected by the caller
@@ -97,7 +95,6 @@ class Server
     {
         $this->basePath = '';
         $this->baseUrl = '';
-        $this->pubsub = '';
         $this->filesystem = $filesystem;
         $this->graph = $graph ?? new Graph();
         $this->response = $response;
@@ -152,17 +149,6 @@ class Server
         // Lets assume the worst...
         $response = $response->withStatus(500);
 
-        // Set Accept, Allow, and CORS headers
-        // $response = $response
-            // ->withHeader('Access-Control-Allow-Origin', '*')
-            // ->withHeader('Access-Control-Allow-Credentials','true')
-            // ->withHeader('Access-Control-Allow-Headers', '*, authorization, accept, content-type')
-            // @FIXME: Add correct headers to resources (for instance allow DELETE on a GET resource)
-            // ->withAddedHeader('Accept-Patch', 'text/ldpatch')
-            // ->withAddedHeader('Accept-Post', 'text/turtle, application/ld+json, image/bmp, image/jpeg')
-            // ->withHeader('Allow', 'GET, HEAD, OPTIONS, PATCH, POST, PUT')
-        //;
-
         switch ($method) {
             case 'DELETE':
                 $response = $this->handleDeleteRequest($response, $path, $contents);
@@ -175,9 +161,6 @@ class Server
                     $response->getBody()->rewind();
                     $response->getBody()->write('');
                     $response = $response->withStatus(204); // CHECKME: nextcloud will remove the updates-via header - any objections to give the 'HEAD' request a 'no content' response type?
-                    if ($this->pubsub) {
-                        $response = $response->withHeader("updates-via", $this->pubsub);
-                    }
                 }
                 break;
 
@@ -350,7 +333,7 @@ class Server
 
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendWebsocketUpdate($path);
+                $this->sendNotificationUpdate($path, "Update");
             }
         } catch (RdfException $exception) {
             $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
@@ -501,7 +484,7 @@ class Server
 
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendWebsocketUpdate($path);
+                $this->sendNotificationUpdate($path, "Update");
             }
         } catch (RdfException $exception) {
             $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
@@ -551,7 +534,7 @@ class Server
                 $this->removeLinkFromMetaFileFor($path);
                 $response = $response->withHeader("Location", $this->baseUrl . $path);
                 $response = $response->withStatus(201);
-                $this->sendWebsocketUpdate($path);
+                $this->sendNotificationUpdate($path, "Create");
             } else {
                 $response = $response->withStatus(500);
             }
@@ -585,39 +568,21 @@ class Server
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendWebsocketUpdate($path);
+                $this->sendNotificationUpdate($path, "Create");
             }
         }
 
         return $response;
     }
 
-    private function sendWebsocketUpdate($path)
+    private function sendNotificationUpdate($path, $type)
     {
-        $pubsub = $this->pubsub;
-        if (!$pubsub) {
-            return; // no pubsub server available, don't even try;
-        }
-
-        $pubsub = str_replace(["https://", "http://"], "ws://", $pubsub);
-
         $baseUrl = $this->baseUrl;
+        $this->notifications->send($baseUrl . $path, $type);
 
-        $client = new Client($pubsub, array(
-            'headers' => array(
-                'Sec-WebSocket-Protocol' => 'solid-0.1'
-            )
-        ));
-
-        try {
-            $client->send("pub $baseUrl$path\n");
-
-            while ($path !== "/") {
-                $path = $this->parentPath($path);
-                $client->send("pub $baseUrl$path\n");
-            }
-        } catch (\WebSocket\Exception $exception) {
-            throw new Exception('Could not write to pub-sup server', 502, $exception);
+        while ($path !== "/") {
+            $path = $this->parentPath($path);
+            $this->notifications->send($baseUrl . $path, "Update"); // checkme: delete on a directory triggers update notifications on parents
         }
     }
 
@@ -637,7 +602,7 @@ class Server
                 } else {
                     $success = $filesystem->deleteDir($path);
                     if ($success) {
-                        $this->sendWebsocketUpdate($path);
+                        $this->sendNotificationUpdate($path, "Delete");
                     }
 
                     $status = $success ? 204 : 500;
@@ -645,7 +610,7 @@ class Server
             } else {
                 $success = $filesystem->delete($path);
                 if ($success) {
-                    $this->sendWebsocketUpdate($path);
+                    $this->sendNotificationUpdate($path, "Delete");
                 }
                 $status = $success ? 204 : 500;
             }
@@ -673,7 +638,7 @@ class Server
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendWebsocketUpdate($path);
+                $this->sendNotificationUpdate($path, "Update");
             }
         }
 

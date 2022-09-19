@@ -1,5 +1,5 @@
 <?php
-    namespace Pdsinterop\Solid;
+    namespace Pdsinterop\Solid\SolidNotifications;
 
     interface SolidNotificationsInterface
     {

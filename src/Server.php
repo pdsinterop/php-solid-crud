@@ -36,6 +36,10 @@ class Server
     private const MIME_TYPE_DIRECTORY = 'directory';
     private const QUERY_PARAM_HTTP_METHOD = 'http-method';
 
+    private const NOTIFICATION_TYPE_CREATE = "Create";
+    private const NOTIFICATION_TYPE_UPDATE = "Update";
+    private const NOTIFICATION_TYPE_DELETE = "Delete";
+
     /** @var string[] */
     private $availableMethods = [
         'DELETE',
@@ -333,7 +337,7 @@ class Server
 
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendNotificationUpdate($path, "Update");
+                $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_UPDATE);
             }
         } catch (RdfException $exception) {
             $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
@@ -484,7 +488,7 @@ class Server
 
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendNotificationUpdate($path, "Update");
+                $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_UPDATE);
             }
         } catch (RdfException $exception) {
             $response->getBody()->write(self::ERROR_CAN_NOT_PARSE_FOR_PATCH);
@@ -534,7 +538,7 @@ class Server
                 $this->removeLinkFromMetaFileFor($path);
                 $response = $response->withHeader("Location", $this->baseUrl . $path);
                 $response = $response->withStatus(201);
-                $this->sendNotificationUpdate($path, "Create");
+                $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_CREATE);
             } else {
                 $response = $response->withStatus(500);
             }
@@ -568,7 +572,7 @@ class Server
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendNotificationUpdate($path, "Create");
+                $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_CREATE);
             }
         }
 
@@ -582,7 +586,7 @@ class Server
 
         while ($path !== "/") {
             $path = $this->parentPath($path);
-            $this->notifications->send($baseUrl . $path, "Update"); // checkme: delete on a directory triggers update notifications on parents
+            $this->notifications->send($baseUrl . $path, self::NOTIFICATION_TYPE_UPDATE); // checkme: delete on a directory triggers update notifications on parents
         }
     }
 
@@ -602,7 +606,7 @@ class Server
                 } else {
                     $success = $filesystem->deleteDir($path);
                     if ($success) {
-                        $this->sendNotificationUpdate($path, "Delete");
+                        $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                     }
 
                     $status = $success ? 204 : 500;
@@ -610,7 +614,7 @@ class Server
             } else {
                 $success = $filesystem->delete($path);
                 if ($success) {
-                    $this->sendNotificationUpdate($path, "Delete");
+                    $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                 }
                 $status = $success ? 204 : 500;
             }
@@ -638,7 +642,7 @@ class Server
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $this->sendNotificationUpdate($path, "Update");
+                $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_UPDATE);
             }
         }
 

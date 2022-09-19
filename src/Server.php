@@ -2,7 +2,7 @@
 
 namespace Pdsinterop\Solid\Resources;
 
-use Pdsinterop\Solid\SolidNotifications\SolidNotificationInterface;
+use Pdsinterop\Solid\SolidNotifications\SolidNotificationsInterface;
 use EasyRdf\Exception as RdfException;
 use EasyRdf\Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
@@ -89,7 +89,7 @@ class Server
         $this->basePath = $serverRequest->getUri()->getPath();
     }
 
-    final public function setNotifications(SolidNotificationInterface $notifications)
+    final public function setNotifications(SolidNotificationsInterface $notifications)
     {
         $this->notifications = $notifications;
     }

@@ -59,7 +59,7 @@ class Server
     private $filesystem;
     /** @var Graph */
     private $graph;
-    /** @var SolidNotificationInterface */
+    /** @var SolidNotificationsInterface */
     private $notifications;
     /** @var Response */
     private $response;

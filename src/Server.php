@@ -2,6 +2,7 @@
 
 namespace Pdsinterop\Solid\Resources;
 
+use Pdsinterop\Solid\SolidNotifications\SolidNotificationInterface;
 use EasyRdf\Exception as RdfException;
 use EasyRdf\Graph as Graph;
 use Laminas\Diactoros\ServerRequest;

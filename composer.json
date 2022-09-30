@@ -1,7 +1,8 @@
 {
   "autoload": {
     "psr-4": {
-      "Pdsinterop\\Solid\\Resources\\": "src/"
+      "Pdsinterop\\Solid\\Resources\\": "src/",
+      "Pdsinterop\\Solid\\SolidNotifications\\": "src/"
     }
   },
   "autoload-dev": {

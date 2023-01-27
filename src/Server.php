@@ -675,8 +675,14 @@ class Server
             $contents = $this->listDirectoryAsTurtle($path);
             $response->getBody()->write($contents);
             $response = $response->withHeader("Content-type", "text/turtle");
+            // @TODO: These values are also hard-coded in self::listDirectoryAsTurtle(), cleanup might be in order 2023/01/27/BMP
+            $response = $response->withAddedHeader('Link', [
+                '<http://www.w3.org/ns/ldp#Container>; rel="type"',
+                '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+                '<http://www.w3.org/ns/ldp#Resource>; rel="type"',
+            ]);
             $response = $response->withStatus(200);
-                } elseif(($filesystem->has($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
+        } elseif(($filesystem->has($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
             $contents = '';
             $response->getBody()->write($contents);
             $response = $response->withHeader("Content-type", "text/turtle");
@@ -760,6 +766,7 @@ class Server
 
         $turtle = array(
             "<>" => array(
+                // @TODO: These values are also hard-coded in self::handleReadRequest(), cleanup might be in order 2023/01/27/BMP
                 "a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource"),
                 "ldp:contains" => array()
             )

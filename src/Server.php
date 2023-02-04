@@ -680,6 +680,7 @@ class Server
                 '<http://www.w3.org/ns/ldp#Container>; rel="type"',
                 '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
                 '<http://www.w3.org/ns/ldp#Resource>; rel="type"',
+                '<http://www.w3.org/ns/pim/space#Storage>; rel="type"',
             ]);
             $response = $response->withStatus(200);
         } elseif(($filesystem->has($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
@@ -771,6 +772,9 @@ class Server
                 "ldp:contains" => array()
             )
         );
+        if ($path === "/") {
+            $turtle["<>"]["a"][] = "<http://www.w3.org/ns/pim/space#Storage>";
+        }
 
         foreach ($listContents as $item) {
             switch($item['type']) {

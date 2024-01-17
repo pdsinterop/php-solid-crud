@@ -210,27 +210,35 @@ class Server
                         } else {
                             $filename = $this->guid();
                         }
-                        // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-                        switch ($contentType) {
-                            case '':
-                                // FIXME: if no content type was passed, we should reject the request according to the spec;
+
+                        $link = $request->getHeaderLine("Link");
+                        switch ($link) {
+                            case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
+                                $response = $this->handleCreateDirectoryRequest($response, $path . $filename);
                             break;
-                            case "text/plain":
-                                $filename .= ".txt";
-                            break;
-                            case "text/turtle":
-                                $filename .= ".ttl";
-                            break;
-                            case "text/html":
-                                $filename .= ".html";
-                            break;
-                            case "application/json":
-                            case "application/ld+json":
-                                $filename .= ".json";
+                            default:
+                                // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
+                                switch ($contentType) {
+                                    case '':
+                                        // FIXME: if no content type was passed, we should reject the request according to the spec;
+                                    break;
+                                    case "text/plain":
+                                        $filename .= ".txt";
+                                    break;
+                                    case "text/turtle":
+                                        $filename .= ".ttl";
+                                    break;
+                                    case "text/html":
+                                        $filename .= ".html";
+                                    break;
+                                    case "application/json":
+                                    case "application/ld+json":
+                                        $filename .= ".json";
+                                    break;
+                                }
+                                $response = $this->handleCreateRequest($response, $path . $filename, $contents);
                             break;
                         }
-
-                        $response = $this->handleCreateRequest($response, $path . $filename, $contents);
                     } else {
                         $response = $this->handleUpdateRequest($response, $path, $contents);
                     }
@@ -275,9 +283,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            // @CHECKME: Does the Graph Parse here also need an URI?
-            $graph->parse($data, "turtle");
-            // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
+            $graph->parse($data, "turtle", $this->baseUrl . $path);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
             // parse query in contents

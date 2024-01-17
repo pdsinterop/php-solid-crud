@@ -283,9 +283,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            // @CHECKME: Does the Graph Parse here also need an URI?
-            $graph->parse($data, "turtle");
-            // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
+            $graph->parse($data, "turtle", $this->baseUrl . $path);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
             // parse query in contents

@@ -31,7 +31,7 @@
   },
   "scripts": {
     "dev:example": "php -S localhost:${PORT:-8080} -t ./src/ ./src/example.php",
-    "tests:unit": "phpunit ./tests/unit"
+    "tests:unit": "phpunit --configuration `.config/phpunit.xml.dist` ./tests/unit"
   },
   "scripts-descriptions": {
     "dev:example": "Run internal PHP development server with example code",

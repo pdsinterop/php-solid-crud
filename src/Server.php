@@ -96,7 +96,7 @@ class Server
     //////////////////////////////// PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     // @TODO: The Graph should be injected by the caller
-    final public function __construct(Filesystem $filesystem, Response $response, Graph $graph = null)
+    final public function __construct(Filesystem $filesystem, Response $response, ?Graph $graph)
     {
         $this->basePath = '';
         $this->baseUrl = '';
@@ -588,6 +588,10 @@ class Server
 
     private function sendNotificationUpdate($path, $type)
     {
+        if (!isset($this->notifications)) {
+            return;
+        }
+
         $baseUrl = $this->baseUrl;
         $this->notifications->send($baseUrl . $path, $type);
 
@@ -788,7 +792,7 @@ class Server
                     // ACL and meta files should not be listed in directory overview
                     if (
                         $item['basename'] !== '.meta'
-                        && in_array($item['extension'], ['acl', 'meta']) === false
+                        && in_array($item['extension']??'', ['acl', 'meta']) === false
                     ) {
                         try {
                             $linkMetadataResponse = $this->handleLinkMetadata(clone $this->response, $item['path']);

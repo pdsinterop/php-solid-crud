@@ -23,6 +23,27 @@ class ServerTest extends TestCase
     const MOCK_HTTP_METHOD = 'MOCK';
     const MOCK_PATH = '/mock/path';
 
+    public static function setUpBeforeClass(): void
+    {
+        $phpUnitVersion = \PHPUnit\Runner\Version::id();
+
+        /* PHP 8.4.0 and PHPUnit 9 triggers a Deprecation Warning, which PHPUnit
+         * promotes to an Exception, which causes tests to fail.This is fixed in
+         * PHPUnit v10. As a workaround for v9, instead of loading the real
+         * interface, a fixed interface is loaded on the fly.
+         */
+        if (
+            version_compare(PHP_VERSION, '8.4.0', '>=')
+            && version_compare($phpUnitVersion, '9.0.0', '>=')
+            && version_compare($phpUnitVersion, '10.0.0', '<')
+        ) {
+            $file = __DIR__ . '/../../vendor/league/flysystem/src/FilesystemInterface.php';
+            $contents = file_get_contents($file);
+            $contents = str_replace(['<?php','Handler $handler = null'], ['','?Handler $handler = null'], $contents);
+            eval($contents);
+        }
+    }
+
     /////////////////////////////////// TESTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     /**

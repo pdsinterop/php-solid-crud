@@ -7,7 +7,7 @@
     beStrictAboutOutputDuringTests="true"
     beStrictAboutTodoAnnotatedTests="true"
     bootstrap="../vendor/autoload.php"
-    cacheResultFile="../.phpunit.cache/test-results"
+    cacheResultFile="../build/.phpunit.cache/test-results"
     convertDeprecationsToExceptions="true"
     failOnRisky="true"
     failOnWarning="true"
@@ -20,7 +20,7 @@
         </testsuite>
     </testsuites>
 
-    <coverage cacheDirectory="../.phpunit.cache/code-coverage" processUncoveredFiles="false">
+    <coverage cacheDirectory="../build/.phpunit.cache/code-coverage" processUncoveredFiles="false">
         <include>
             <directory suffix=".php">../src/</directory>
         </include>

@@ -96,7 +96,7 @@ class Server
     //////////////////////////////// PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     // @TODO: The Graph should be injected by the caller
-    final public function __construct(Filesystem $filesystem, Response $response, ?Graph $graph)
+    final public function __construct(Filesystem $filesystem, Response $response, ?Graph $graph = null)
     {
         $this->basePath = '';
         $this->baseUrl = '';

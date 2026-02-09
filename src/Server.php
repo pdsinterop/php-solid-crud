@@ -283,7 +283,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            $graph->parse($data, "turtle", , $this->baseUrl . $this->basePath . $path);
+            $graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $path);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
             // parse query in contents

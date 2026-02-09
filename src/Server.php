@@ -283,7 +283,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            $graph->parse($data, "turtle", $this->baseUrl . $path);
+            $graph->parse($data, "turtle", , $this->baseUrl . $this->basePath . $path);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
             // parse query in contents
@@ -297,14 +297,14 @@ class Server
                         case "INSERT":
                             // insert $triple(s) into $graph
                             // @CHECKME: Does the Graph Parse here also need an URI?
-                            $graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+                            $graph->parse($triples, "turtle", $this->baseUrl . $this->basePath . $path); // FIXME: The triples here are in sparql format, not in turtle;
 
                         break;
                         case "DELETE":
                             // delete $triples from $graph
                             $deleteGraph = $this->getGraph();
                             // @CHECKME: Does the Graph Parse here also need an URI?
-                            $deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+                            $deleteGraph->parse($triples, "turtle", $this->baseUrl . $this->basePath . $path); // FIXME: The triples here are in sparql format, not in turtle;
                             $resources = $deleteGraph->resources();
                             foreach ($resources as $resource) {
                                 $properties = $resource->propertyUris();
@@ -440,9 +440,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            // @CHECKME: Does the Graph Parse here also need an URI?
-            $graph->parse($data, "turtle");
-            // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
+            $graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $path);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
             $instructions = $this->n3Convert($contents);
             foreach ($instructions as $key => $value) {
@@ -450,15 +448,14 @@ class Server
                     case "insert":
                         // error_log("INSERT");
                         // error_log($instructions['insert']);
-                        $graph->parse($instructions['insert'], "turtle");
+                        $graph->parse($instructions['insert'], "turtle", $this->baseUrl . $this->basePath . $path);
                     break;
                     case "delete":
                         $deleteGraph = $this->getGraph();
                         // error_log("DELETE");
                         // error_log($instructions['delete']);
 
-                        // @CHECKME: Does the Graph Parse here also need an URI?
-                        $deleteGraph->parse($instructions['delete'], "turtle");
+                        $deleteGraph->parse($instructions['delete'], "turtle", $this->baseUrl . $this->basePath . $path);
                         $resources = $deleteGraph->resources();
                         foreach ($resources as $resource) {
                             $properties = $resource->propertyUris();

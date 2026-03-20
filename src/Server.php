@@ -34,7 +34,7 @@ class Server
     public const ERROR_PUT_NON_EXISTING_RESOURCE = self::ERROR_PATH_DOES_NOT_EXIST . '. Can not "PUT" non-existing resource. Use "POST" instead';
     public const ERROR_UNKNOWN_HTTP_METHOD = 'Unknown or unsupported HTTP METHOD "%s"';
 
-    private const MIME_TYPE_DIRECTORY = 'directory';
+    public const MIME_TYPE_DIRECTORY = 'directory';
     private const QUERY_PARAM_HTTP_METHOD = 'http-method';
 
     private const NOTIFICATION_TYPE_CREATE = "Create";

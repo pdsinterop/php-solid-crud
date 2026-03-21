@@ -18,22 +18,22 @@ use Psr\Http\Message\ServerRequestInterface;
  * @covers \Pdsinterop\Solid\Resources\Server
  * @coversDefaultClass \Pdsinterop\Solid\Resources\Server
  *
- * @uses \Laminas\Diactoros\Response
- * @uses \Laminas\Diactoros\ServerRequest
- * @uses \Pdsinterop\Solid\Resources\Exception
- * @uses \Pdsinterop\Solid\Resources\Server
+ * @uses   \Laminas\Diactoros\Response
+ * @uses   \Laminas\Diactoros\ServerRequest
+ * @uses   \Pdsinterop\Solid\Resources\Exception
+ * @uses   \Pdsinterop\Solid\Resources\Server
  */
 class ServerTest extends TestCase
 {
     ////////////////////////////////// FIXTURES \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-    const MOCK_SLUG = 'Mock Slug';
-
-    /////////////////////////////////// TESTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
     const MOCK_BODY = 'php://temp';
-    const MOCK_URL = '';
+    const MOCK_PATH = '/path/to/resource/';
     const MOCK_SERVER_PARAMS = [];
     const MOCK_UPLOADED_FILES = [];
+    const MOCK_URL = 'https://example.com' . self::MOCK_PATH;
+
+    /////////////////////////////////// TESTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     /** @testdox Server should complain when instantiated without File System */
     public function testInstatiationWithoutFileSystem()
@@ -133,60 +133,34 @@ class ServerTest extends TestCase
      *
      * @covers ::respondToRequest
      *
-     * @dataProvider provideMimeTypes
+     * @dataProvider provideSlugs
      */
-    public function testRespondToPOSTCreateRequest($mimetype)
+    public function testRespondToPOSTCreateRequest($slug, $mimetype, $expected)
     {
-        $expected = self::MOCK_SLUG . self::MOCK_SLUG;
-        $extensions = [
-            'application/json' => '.json',
-            'application/ld+json' => '.json',
-            'text/html' => '.html',
-            'text/plain' => '.txt',
-            'text/turtle' => '.ttl',
-        ];
-
-        if (
-            $mimetype === 'application/ld+json'
-            || $mimetype === 'text/turtle'
-            || $mimetype === 'text/html'
-            || $mimetype === 'text/plain'
-            || $mimetype === 'application/json'
-        ) {
-            /*/ If the filename suggestion in the Slug contains a file extension, another file extension is appended for known/supported MIME types. This leads to a filename with two file extensions, like 'example.ttl.ttl'.
-
-            If the MIME type is not known or does not match the provided file extension, there are still two file extensions. They are merely not the same.
-
-            For instance 'example.json.ttl' or 'example.ttl.json'.
-             /*/
-            $expected .= $extensions[$mimetype];
-        }
-
         // Arrange
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
         $request = $this->createRequest('POST', [
             'Content-Type' => $mimetype,
             'Link' => '',
-            'Slug' => self::MOCK_SLUG,
+            'Slug' => $slug,
         ]);
 
         $mockFileSystem
             ->method('has')
             ->withAnyParameters()
             ->willReturnMap([
-                [self::MOCK_SLUG, true],
-                [$expected, false],
+                [self::MOCK_PATH, true],
             ]);
 
         $mockFileSystem
             ->method('getMimetype')
-            ->with(self::MOCK_SLUG)
+            ->with(self::MOCK_PATH)
             ->willReturn(Server::MIME_TYPE_DIRECTORY);
 
         $mockFileSystem
             ->method('write')
-            ->with($expected, '', [])
+            ->withAnyParameters()
             ->willReturn(true);
 
         // Act
@@ -196,21 +170,23 @@ class ServerTest extends TestCase
         // Assert
         $actual = $response->getHeaderLine('Location');
 
-        $this->assertEquals($expected, $actual);
+        $this->assertEquals(self::MOCK_PATH . $expected, $actual);
     }
 
     /////////////////////////////// DATAPROVIDERS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
-    public static function provideMimeTypes()
+    public static function provideSlugs()
     {
         return [
-            'mime: (empty)' => [''],
-            'mime: application/json' => ['application/json'],
-            'mime: application/ld+json' => ['application/ld+json'],
-            'mime: some/other' => ['some/other'],
-            'mime: text/html' => ['text/html'],
-            'mime: text/plain' => ['text/plain'],
-            'mime: text/turtle' => ['text/turtle'],
+            // '' => [$slug, $mimetype, $expectedFilename],
+            'Slug with json extension, with ld+json MIME' => ['Mock Slug.json', 'application/ld+json', 'Mock Slug.json.json'],
+            'Slug with jsonld extension, with ld+json MIME)' => ['Mock Slug.jsonld', 'application/ld+json', 'Mock Slug.jsonld.json'],
+            'Slug with PNG extension, with PNG MIME' => ['Mock Slug.png', 'image/png', 'Mock Slug.png.png'],
+            'Slug with some other, extension) with Turtle MIME' => ['Mock Slug.other', 'text/turtle', 'Mock Slug.other.ttl'],
+            'Slug with Turtle extension, with other MIME' => ['Mock Slug.ttl', 'some/other', 'Mock Slug.ttl'],
+            'Slug with Turtle extension, with Turtle MIME' => ['Mock Slug.ttl', 'text/turtle', 'Mock Slug.ttl.ttl'],
+            'Slug without extension), with some other  MIME' => ['Mock Slug', 'some/other', 'Mock Slug'],
+            'Slug without extension), with turtle MIME' => ['Mock Slug', 'text/turtle', 'Mock Slug.ttl'],
         ];
     }
 

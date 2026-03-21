@@ -1,6 +1,6 @@
 <?php
 
-namespace Unit;
+namespace unit;
 
 use Pdsinterop\Solid\Resources\Exception;
 use PHPUnit\Framework\TestCase;

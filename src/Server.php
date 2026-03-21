@@ -2,6 +2,7 @@
 
 namespace Pdsinterop\Solid\Resources;
 
+use EasyRdf\Format;
 use Pdsinterop\Solid\SolidNotifications\SolidNotificationsInterface;
 use EasyRdf\Exception as RdfException;
 use EasyRdf\Graph as Graph;
@@ -34,7 +35,7 @@ class Server
     public const ERROR_PUT_NON_EXISTING_RESOURCE = self::ERROR_PATH_DOES_NOT_EXIST . '. Can not "PUT" non-existing resource. Use "POST" instead';
     public const ERROR_UNKNOWN_HTTP_METHOD = 'Unknown or unsupported HTTP METHOD "%s"';
 
-    private const MIME_TYPE_DIRECTORY = 'directory';
+    public const MIME_TYPE_DIRECTORY = 'directory';
     private const QUERY_PARAM_HTTP_METHOD = 'http-method';
 
     private const NOTIFICATION_TYPE_CREATE = "Create";
@@ -55,6 +56,10 @@ class Server
     private $basePath;
     /** @var string */
     private $baseUrl;
+    /** @var string */
+    private $lockedPath;
+    /** @var string */
+    private $requestedPath;
     /** @var Filesystem */
     private $filesystem;
     /** @var Graph */
@@ -89,6 +94,11 @@ class Server
         $this->basePath = $serverRequest->getUri()->getPath();
     }
 
+    final public function lockToPath($path)
+    {
+        $this->lockedPath = $path;
+    }
+
     final public function setNotifications(SolidNotificationsInterface $notifications)
     {
         $this->notifications = $notifications;
@@ -100,9 +110,14 @@ class Server
     {
         $this->basePath = '';
         $this->baseUrl = '';
+        $this->lockedPath = false;
         $this->filesystem = $filesystem;
         $this->graph = $graph ?? new Graph();
         $this->response = $response;
+
+        // Store and serve json-ld with '.json' extension instead of '.jsonld''
+        Format::getFormat('jsonld')->setExtensions('json');
+
         // @TODO: Mention \EasyRdf_Namespace::set('lm', 'https://purl.org/pdsinterop/link-metadata#');
     }
 
@@ -119,6 +134,11 @@ class Server
             $slugs = $request->getHeader('Slug');
             // @CHECKME: First set header wins, is this correct? Or should it be the last one?
             $path = reset($slugs);
+        }
+
+        $this->requestedPath = $path;
+        if ($this->lockedPath) {
+            $path = $this->lockedPath;
         }
 
         $method = $this->getRequestMethod($request);
@@ -191,7 +211,8 @@ class Server
                         $response = $response->withStatus(400);
                     break;
                 }
-            break;
+                break;
+
             case 'POST':
                 $pathExists = $filesystem->has($path);
                 if ($pathExists) {
@@ -201,6 +222,7 @@ class Server
                     $pathExists = true;
                     $mimetype = self::MIME_TYPE_DIRECTORY;
                 }
+
                 if ($pathExists === true) {
                     if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
                         $contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
@@ -217,25 +239,18 @@ class Server
                                 $response = $this->handleCreateDirectoryRequest($response, $path . $filename);
                             break;
                             default:
-                                // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-                                switch ($contentType) {
-                                    case '':
-                                        // FIXME: if no content type was passed, we should reject the request according to the spec;
-                                    break;
-                                    case "text/plain":
-                                        $filename .= ".txt";
-                                    break;
-                                    case "text/turtle":
-                                        $filename .= ".ttl";
-                                    break;
-                                    case "text/html":
-                                        $filename .= ".html";
-                                    break;
-                                    case "application/json":
-                                    case "application/ld+json":
-                                        $filename .= ".json";
-                                    break;
+                                // FIXME: if no content type was passed, we should reject the request according to the spec;
+                                foreach (Format::getFormats() as $format) {
+                                    $mimeTypes = array_keys($format->getMimeTypes());
+                                    foreach ($mimeTypes as $mimeType) {
+                                        $extensions[$mimeType] = '.'.$format->getDefaultExtension();
+                                    }
                                 }
+
+                                if (isset($extensions[$contentType]) && ! str_ends_with($filename, $extensions[$contentType])) {
+                                    $filename .= $extensions[$contentType];
+                                }
+
                                 $response = $this->handleCreateRequest($response, $path . $filename, $contents);
                             break;
                         }
@@ -245,7 +260,8 @@ class Server
                 } else {
                     $response = $this->handleCreateRequest($response, $path, $contents);
                 }
-            break;
+                break;
+
             case 'PUT':
                 $link = $request->getHeaderLine("Link");
                 switch ($link) {
@@ -260,7 +276,8 @@ class Server
                         }
                     break;
                 }
-            break;
+                break;
+
             default:
                 throw Exception::create(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
                 break;
@@ -283,7 +300,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            $graph->parse($data, "turtle", $this->baseUrl . $path);
+            $graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
             // parse query in contents
@@ -297,14 +314,14 @@ class Server
                         case "INSERT":
                             // insert $triple(s) into $graph
                             // @CHECKME: Does the Graph Parse here also need an URI?
-                            $graph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+                            $graph->parse($triples, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath); // FIXME: The triples here are in sparql format, not in turtle;
 
                         break;
                         case "DELETE":
                             // delete $triples from $graph
                             $deleteGraph = $this->getGraph();
                             // @CHECKME: Does the Graph Parse here also need an URI?
-                            $deleteGraph->parse($triples, "turtle"); // FIXME: The triples here are in sparql format, not in turtle;
+                            $deleteGraph->parse($triples, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath); // FIXME: The triples here are in sparql format, not in turtle;
                             $resources = $deleteGraph->resources();
                             foreach ($resources as $resource) {
                                 $properties = $resource->propertyUris();
@@ -440,9 +457,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            // @CHECKME: Does the Graph Parse here also need an URI?
-            $graph->parse($data, "turtle");
-            // FIXME: Adding this base will allow us to parse <> entries; , $this->baseUrl . $this->basePath . $path), but that breaks the build.
+            $graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
             $instructions = $this->n3Convert($contents);
             foreach ($instructions as $key => $value) {
@@ -450,15 +465,14 @@ class Server
                     case "insert":
                         // error_log("INSERT");
                         // error_log($instructions['insert']);
-                        $graph->parse($instructions['insert'], "turtle");
+                        $graph->parse($instructions['insert'], "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
                     break;
                     case "delete":
                         $deleteGraph = $this->getGraph();
                         // error_log("DELETE");
                         // error_log($instructions['delete']);
 
-                        // @CHECKME: Does the Graph Parse here also need an URI?
-                        $deleteGraph->parse($instructions['delete'], "turtle");
+                        $deleteGraph->parse($instructions['delete'], "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
                         $resources = $deleteGraph->resources();
                         foreach ($resources as $resource) {
                             $properties = $resource->propertyUris();

@@ -247,7 +247,7 @@ class Server
                                     }
                                 }
 
-                                if (isset($extensions[$contentType])) {
+                                if (isset($extensions[$contentType]) && ! str_ends_with($filename, $extensions[$contentType])) {
                                     $filename .= $extensions[$contentType];
                                 }
 

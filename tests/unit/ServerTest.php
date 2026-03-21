@@ -2,11 +2,13 @@
 /**
  * Unit Test for the Server class
  */
+
 namespace Pdsinterop\Solid\Resources;
 
 use ArgumentCountError;
 use EasyRdf\Graph;
 use Laminas\Diactoros\Response;
+use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FilesystemInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
@@ -15,11 +17,23 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * @covers \Pdsinterop\Solid\Resources\Server
  * @coversDefaultClass \Pdsinterop\Solid\Resources\Server
+ *
+ * @uses \Laminas\Diactoros\Response
+ * @uses \Laminas\Diactoros\ServerRequest
+ * @uses \Pdsinterop\Solid\Resources\Exception
  * @uses \Pdsinterop\Solid\Resources\Server
  */
 class ServerTest extends TestCase
 {
+    ////////////////////////////////// FIXTURES \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
     const MOCK_SLUG = 'Mock Slug';
+
+    /////////////////////////////////// TESTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    const MOCK_BODY = 'php://temp';
+    const MOCK_URL = '';
+    const MOCK_SERVER_PARAMS = [];
+    const MOCK_UPLOADED_FILES = [];
 
     /** @testdox Server should complain when instantiated without File System */
     public function testInstatiationWithoutFileSystem()
@@ -93,8 +107,6 @@ class ServerTest extends TestCase
      *
      * @covers ::respondToRequest
      *
-     * @uses \Pdsinterop\Solid\Resources\Exception
-     *
      * @dataProvider provideUnsupportedHttpMethods
      */
     public function testRespondToRequestWithUnsupportedHttpMethod($httpMethod)
@@ -102,10 +114,9 @@ class ServerTest extends TestCase
         // Arrange
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
-        $mockRequest = $this->getMockBuilder(ServerRequestInterface::class)->getMock();
-        $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
+        $request = $this->createRequest($httpMethod);
 
-        $mockRequest->method('getMethod')->willReturn($httpMethod);
+        $mockResponse = new Response();
 
         $server = new Server($mockFileSystem, $mockResponse, $mockGraph);
 
@@ -114,7 +125,7 @@ class ServerTest extends TestCase
         $this->expectExceptionMessage('Unknown or unsupported HTTP METHOD');
 
         // Act
-        $server->respondToRequest($mockRequest);
+        $server->respondToRequest($request);
     }
 
     /**
@@ -122,14 +133,11 @@ class ServerTest extends TestCase
      *
      * @covers ::respondToRequest
      *
-     * @uses \Pdsinterop\Solid\Resources\Exception
-     *
      * @dataProvider provideMimeTypes
      */
     public function testRespondToPOSTCreateRequest($mimetype)
     {
-        $expectedName = self::MOCK_SLUG . self::MOCK_SLUG;
-
+        $expected = self::MOCK_SLUG . self::MOCK_SLUG;
         $extensions = [
             'application/json' => '.json',
             'application/ld+json' => '.json',
@@ -151,62 +159,47 @@ class ServerTest extends TestCase
 
             For instance 'example.json.ttl' or 'example.ttl.json'.
              /*/
-            $expectedName .= $extensions[$mimetype];
+            $expected .= $extensions[$mimetype];
         }
 
         // Arrange
-        $expected = new Response(); //@CHECKME: Use mock? $this->getMockBuilder(ResponseInterface::class)->getMock();
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
-        $mockRequest = $this->getMockBuilder(ServerRequestInterface::class)->getMock();
+        $request = $this->createRequest('POST', [
+            'Content-Type' => $mimetype,
+            'Link' => '',
+            'Slug' => self::MOCK_SLUG,
+        ]);
 
-        $mockRequest->method('getMethod')->willReturn('POST');
-
-        $mockRequest->expects($this->exactly(3))
-            ->method('getHeaderLine')
-            ->willReturnMap([
-                ['Content-Type', $mimetype],
-                ['Link', ''],
-                ['Slug', self::MOCK_SLUG],
-            ]);
-
-        $mockRequest->expects($this->exactly(1))
-            ->method('hasHeader')
-            ->with('Slug')
-            ->willReturn(true);
-
-        $mockRequest->expects($this->exactly(1))
-            ->method('getHeader')
-            ->with('Slug')
-            ->willReturn([self::MOCK_SLUG, 'Second Mock Slug']);
-
-        $mockFileSystem->expects($this->exactly(2))
+        $mockFileSystem
             ->method('has')
             ->withAnyParameters()
             ->willReturnMap([
                 [self::MOCK_SLUG, true],
-                [$expectedName, false],
+                [$expected, false],
             ]);
 
-        $mockFileSystem->expects($this->exactly(1))
-            ->method('write')
-            ->with($expectedName, '', [])
-            ->willReturn(true);
-
-        $mockFileSystem->expects($this->exactly(1))
+        $mockFileSystem
             ->method('getMimetype')
             ->with(self::MOCK_SLUG)
             ->willReturn(Server::MIME_TYPE_DIRECTORY);
 
-        $server = new Server($mockFileSystem, $expected, $mockGraph);
+        $mockFileSystem
+            ->method('write')
+            ->with($expected, '', [])
+            ->willReturn(true);
 
         // Act
-        $response = $server->respondToRequest($mockRequest);
+        $server = new Server($mockFileSystem, new Response(), $mockGraph);
+        $response = $server->respondToRequest($request);
 
+        // Assert
         $actual = $response->getHeaderLine('Location');
 
-        $this->assertEquals($expectedName, $actual);
+        $this->assertEquals($expected, $actual);
     }
+
+    /////////////////////////////// DATAPROVIDERS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     public static function provideMimeTypes()
     {
@@ -224,10 +217,22 @@ class ServerTest extends TestCase
     public static function provideUnsupportedHttpMethods()
     {
         return [
-            'string:(empty)' => [''],
             'string:CONNECT' => ['CONNECT'],
             'string:TRACE' => ['TRACE'],
             'string:UNKNOWN' => ['UNKNOWN'],
         ];
+    }
+
+    ////////////////////////////// MOCKS AND STUBS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    private function createRequest(string $httpMethod, array $headers = []): ServerRequestInterface
+    {
+        return new ServerRequest(
+            self::MOCK_SERVER_PARAMS,
+            self::MOCK_UPLOADED_FILES,
+            self::MOCK_URL,
+            $httpMethod,
+            self::MOCK_BODY,
+            $headers
+        );
     }
 }

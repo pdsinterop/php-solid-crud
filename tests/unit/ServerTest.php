@@ -180,13 +180,13 @@ class ServerTest extends TestCase
         return [
             // '' => [$slug, $mimetype, $expectedFilename],
             'Slug with json extension, with ld+json MIME' => ['Mock Slug.json', 'application/ld+json', 'Mock Slug.json'],
-            'Slug with jsonld extension, with ld+json MIME)' => ['Mock Slug.jsonld', 'application/ld+json', 'Mock Slug.jsonld.json'],
+            'Slug with jsonld extension, with ld+json MIME' => ['Mock Slug.jsonld', 'application/ld+json', 'Mock Slug.jsonld'],
             'Slug with PNG extension, with PNG MIME' => ['Mock Slug.png', 'image/png', 'Mock Slug.png'],
-            'Slug with some other, extension) with Turtle MIME' => ['Mock Slug.other', 'text/turtle', 'Mock Slug.other.ttl'],
+            'Slug with some other, extension) with Turtle MIME' => ['Mock Slug.other', 'text/turtle', 'Mock Slug.other'],
             'Slug with Turtle extension, with other MIME' => ['Mock Slug.ttl', 'some/other', 'Mock Slug.ttl'],
             'Slug with Turtle extension, with Turtle MIME' => ['Mock Slug.ttl', 'text/turtle', 'Mock Slug.ttl'],
-            'Slug without extension), with some other  MIME' => ['Mock Slug', 'some/other', 'Mock Slug'],
-            'Slug without extension), with turtle MIME' => ['Mock Slug', 'text/turtle', 'Mock Slug.ttl'],
+            'Slug without extension, with some other  MIME' => ['Mock Slug', 'some/other', 'Mock Slug'],
+            'Slug without extension, with turtle MIME' => ['Mock Slug', 'text/turtle', 'Mock Slug'],
         ];
     }
 

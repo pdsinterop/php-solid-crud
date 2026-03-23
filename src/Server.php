@@ -2,7 +2,6 @@
 
 namespace Pdsinterop\Solid\Resources;
 
-use EasyRdf\Format;
 use Pdsinterop\Solid\SolidNotifications\SolidNotificationsInterface;
 use EasyRdf\Exception as RdfException;
 use EasyRdf\Graph as Graph;
@@ -114,10 +113,6 @@ class Server
         $this->filesystem = $filesystem;
         $this->graph = $graph ?? new Graph();
         $this->response = $response;
-
-        // Store and serve json-ld with '.json' extension instead of '.jsonld''
-        Format::getFormat('jsonld')->setExtensions('json');
-
         // @TODO: Mention \EasyRdf_Namespace::set('lm', 'https://purl.org/pdsinterop/link-metadata#');
     }
 
@@ -211,8 +206,7 @@ class Server
                         $response = $response->withStatus(400);
                     break;
                 }
-                break;
-
+            break;
             case 'POST':
                 $pathExists = $filesystem->has($path);
                 if ($pathExists) {
@@ -222,7 +216,6 @@ class Server
                     $pathExists = true;
                     $mimetype = self::MIME_TYPE_DIRECTORY;
                 }
-
                 if ($pathExists === true) {
                     if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
                         $contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
@@ -231,6 +224,25 @@ class Server
                             $filename = $slug;
                         } else {
                             $filename = $this->guid();
+                            // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
+                            switch ($contentType) {
+                                case '':
+                                    // FIXME: if no content type was passed, we should reject the request according to the spec;
+                                break;
+                                case "text/plain":
+                                    $filename .= ".txt";
+                                break;
+                                case "text/turtle":
+                                    $filename .= ".ttl";
+                                break;
+                                case "text/html":
+                                    $filename .= ".html";
+                                break;
+                                case "application/json":
+                                case "application/ld+json":
+                                    $filename .= ".json";
+                                break;
+                            }
                         }
 
                         $link = $request->getHeaderLine("Link");
@@ -239,18 +251,6 @@ class Server
                                 $response = $this->handleCreateDirectoryRequest($response, $path . $filename);
                             break;
                             default:
-                                // FIXME: if no content type was passed, we should reject the request according to the spec;
-                                foreach (Format::getFormats() as $format) {
-                                    $mimeTypes = array_keys($format->getMimeTypes());
-                                    foreach ($mimeTypes as $mimeType) {
-                                        $extensions[$mimeType] = '.'.$format->getDefaultExtension();
-                                    }
-                                }
-
-                                if (isset($extensions[$contentType]) && ! str_ends_with($filename, $extensions[$contentType])) {
-                                    $filename .= $extensions[$contentType];
-                                }
-
                                 $response = $this->handleCreateRequest($response, $path . $filename, $contents);
                             break;
                         }
@@ -260,8 +260,7 @@ class Server
                 } else {
                     $response = $this->handleCreateRequest($response, $path, $contents);
                 }
-                break;
-
+            break;
             case 'PUT':
                 $link = $request->getHeaderLine("Link");
                 switch ($link) {
@@ -276,8 +275,7 @@ class Server
                         }
                     break;
                 }
-                break;
-
+            break;
             default:
                 throw Exception::create(self::ERROR_UNKNOWN_HTTP_METHOD, [$method]);
                 break;

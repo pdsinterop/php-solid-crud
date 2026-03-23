@@ -34,7 +34,7 @@ class Server
     public const ERROR_PUT_NON_EXISTING_RESOURCE = self::ERROR_PATH_DOES_NOT_EXIST . '. Can not "PUT" non-existing resource. Use "POST" instead';
     public const ERROR_UNKNOWN_HTTP_METHOD = 'Unknown or unsupported HTTP METHOD "%s"';
 
-    private const MIME_TYPE_DIRECTORY = 'directory';
+    public const MIME_TYPE_DIRECTORY = 'directory';
     private const QUERY_PARAM_HTTP_METHOD = 'http-method';
 
     private const NOTIFICATION_TYPE_CREATE = "Create";
@@ -224,6 +224,25 @@ class Server
                             $filename = $slug;
                         } else {
                             $filename = $this->guid();
+                            // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
+                            switch ($contentType) {
+                                case '':
+                                    // FIXME: if no content type was passed, we should reject the request according to the spec;
+                                break;
+                                case "text/plain":
+                                    $filename .= ".txt";
+                                break;
+                                case "text/turtle":
+                                    $filename .= ".ttl";
+                                break;
+                                case "text/html":
+                                    $filename .= ".html";
+                                break;
+                                case "application/json":
+                                case "application/ld+json":
+                                    $filename .= ".json";
+                                break;
+                            }
                         }
 
                         $link = $request->getHeaderLine("Link");
@@ -232,25 +251,6 @@ class Server
                                 $response = $this->handleCreateDirectoryRequest($response, $path . $filename);
                             break;
                             default:
-                                // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-                                switch ($contentType) {
-                                    case '':
-                                        // FIXME: if no content type was passed, we should reject the request according to the spec;
-                                    break;
-                                    case "text/plain":
-                                        $filename .= ".txt";
-                                    break;
-                                    case "text/turtle":
-                                        $filename .= ".ttl";
-                                    break;
-                                    case "text/html":
-                                        $filename .= ".html";
-                                    break;
-                                    case "application/json":
-                                    case "application/ld+json":
-                                        $filename .= ".json";
-                                    break;
-                                }
                                 $response = $this->handleCreateRequest($response, $path . $filename, $contents);
                             break;
                         }

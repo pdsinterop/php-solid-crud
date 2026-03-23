@@ -10,6 +10,8 @@ use EasyRdf\Graph;
 use Laminas\Diactoros\Response;
 use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FilesystemInterface;
+use Pdsinterop\Rdf\Flysystem\Plugin\AsMime;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -28,15 +30,37 @@ class ServerTest extends TestCase
     ////////////////////////////////// FIXTURES \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     const MOCK_BODY = 'php://temp';
-    const MOCK_PATH = '/path/to/resource/';
+    const MOCK_HTTP_METHOD = 'MOCK';
+    const MOCK_PATH = '/mock/path/';
     const MOCK_SERVER_PARAMS = [];
     const MOCK_UPLOADED_FILES = [];
     const MOCK_URL = 'https://example.com' . self::MOCK_PATH;
 
+    public static function setUpBeforeClass(): void
+    {
+        $phpUnitVersion = \PHPUnit\Runner\Version::id();
+
+        /* PHP 8.4.0 and PHPUnit 9 triggers a Deprecation Warning, which PHPUnit
+         * promotes to an Exception, which causes tests to fail.This is fixed in
+         * PHPUnit v10. As a workaround for v9, instead of loading the real
+         * interface, a fixed interface is loaded on the fly.
+         */
+        if (
+            version_compare(PHP_VERSION, '8.4.0', '>=')
+            && version_compare($phpUnitVersion, '9.0.0', '>=')
+            && version_compare($phpUnitVersion, '10.0.0', '<')
+        ) {
+            $file = __DIR__ . '/../../vendor/league/flysystem/src/FilesystemInterface.php';
+            $contents = file_get_contents($file);
+            $contents = str_replace(['<?php','Handler $handler = null'], ['','?Handler $handler = null'], $contents);
+            eval($contents);
+        }
+    }
+
     /////////////////////////////////// TESTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     /** @testdox Server should complain when instantiated without File System */
-    public function testInstatiationWithoutFileSystem()
+    public function testServerInstatiationWithoutFileSystem()
     {
         $this->expectException(ArgumentCountError::class);
         $this->expectExceptionMessageMatches('/Too few arguments .+ 0 passed/');
@@ -45,7 +69,7 @@ class ServerTest extends TestCase
     }
 
     /** @testdox Server should complain when instantiated without Response */
-    public function testInstatiationWithoutResponse()
+    public function testServerInstatiationWithoutResponse()
     {
         $this->expectException(ArgumentCountError::class);
         $this->expectExceptionMessageMatches('/Too few arguments .+ 1 passed/');
@@ -56,7 +80,7 @@ class ServerTest extends TestCase
     }
 
     /** @testdox Server should be instantiated when constructed without Graph */
-    public function testInstatiationWithoutGraph()
+    public function testServerInstatiationWithoutGraph()
     {
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
         $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
@@ -68,7 +92,7 @@ class ServerTest extends TestCase
     }
 
     /** @testdox Server should be instantiated when constructed with Graph */
-    public function testInstatiationWithGraph()
+    public function testServerInstatiationWithGraph()
     {
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
         $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
@@ -85,20 +109,18 @@ class ServerTest extends TestCase
      *
      * @covers ::respondToRequest
      */
-    public function testRespondToRequestWithoutRequest()
+    public function testServerRespondToRequestWithoutRequest()
     {
         // Arrange
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
         $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
-        $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
-
-        $server = new Server($mockFileSystem, $mockResponse, $mockGraph);
 
         // Assert
         $this->expectException(ArgumentCountError::class);
         $this->expectExceptionMessageMatches('/Too few arguments .+ 0 passed/');
 
         // Act
+        $server = new Server($mockFileSystem, $mockResponse);
         $server->respondToRequest();
     }
 
@@ -113,19 +135,35 @@ class ServerTest extends TestCase
     {
         // Arrange
         $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
-        $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
-        $request = $this->createRequest($httpMethod);
-
         $mockResponse = new Response();
-
-        $server = new Server($mockFileSystem, $mockResponse, $mockGraph);
+        $request = $this->createRequest($httpMethod);
 
         // Assert
         $this->expectException(Exception::class);
-        $this->expectExceptionMessage('Unknown or unsupported HTTP METHOD');
+        $this->expectExceptionMessage(vsprintf(Server::ERROR_UNKNOWN_HTTP_METHOD, [$httpMethod]));
 
         // Act
+        $server = new Server($mockFileSystem, $mockResponse);
         $server->respondToRequest($request);
+    }
+
+    /**
+     * @testdox Server should return response when asked to RespondToRequest with valid request
+     *
+     * @covers ::respondToRequest
+     */
+    public function testServerRespondToRequestWithRequest()
+    {
+        // Arrange
+        $mockFileSystem = $this->createMockFileSystem();
+        $request = $this->createRequest('GET');
+
+        // Act
+        $server = new Server($mockFileSystem, new Response());
+        $response = $server->respondToRequest($request);
+
+        // Assert
+        $this->assertEquals(200, $response->getStatusCode());
     }
 
     /**
@@ -195,11 +233,36 @@ class ServerTest extends TestCase
         return [
             'string:CONNECT' => ['CONNECT'],
             'string:TRACE' => ['TRACE'],
-            'string:UNKNOWN' => ['UNKNOWN'],
+            'string:UNKNOWN' => [self::MOCK_HTTP_METHOD],
         ];
     }
 
     ////////////////////////////// MOCKS AND STUBS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+    public function createMockFileSystem(): FilesystemInterface|MockObject
+    {
+        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)
+            ->onlyMethods([
+                'addPlugin', 'copy', 'createDir', 'delete', 'deleteDir', 'get', 'getMetadata', 'getMimetype', 'getSize', 'getTimestamp', 'getVisibility', 'has', 'listContents', 'put', 'putStream', 'read', 'readAndDelete', 'readStream', 'rename', 'setVisibility', 'update', 'updateStream', 'write', 'writeStream'
+            ])
+            ->addMethods(['asMime'])
+            ->getMock();
+
+        $mockAsMime = $this->getMockBuilder(AsMime::class)
+            // ->onlyMethods(['getMimetype', 'getSize', 'getTimestamp'])
+            ->addMethods(['has', 'getMimetype', 'read'])
+            ->disableOriginalConstructor()
+            ->getMock();
+
+        $mockAsMime->method('getMimetype')->willReturn('text/turtle');
+        $mockAsMime->method('has')->willReturn(true);
+        $mockAsMime->method('read')->willReturn('');
+
+        $mockFileSystem->method('asMime')->willReturn($mockAsMime);
+
+        return $mockFileSystem;
+    }
+
     private function createRequest(string $httpMethod, array $headers = []): ServerRequestInterface
     {
         return new ServerRequest(

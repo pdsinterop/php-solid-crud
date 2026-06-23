@@ -175,7 +175,7 @@ class Server
             break;
             case 'GET':
             case 'HEAD':
-                $mime = $this->getRequestedMimeType($request->getHeaderLine("Accept"));
+                $mime = $this->getRequestedMimeTypes($request->getHeaderLine("Accept"));
                 $response = $this->handleReadRequest($response, $path, $contents, $mime);
                 if ($method === 'HEAD') {
                     $response->getBody()->rewind();
@@ -672,27 +672,29 @@ class Server
         return $response;
     }
 
-    private function getRequestedMimeType($accept)
+    private function getRequestedMimeTypes($accept)
     {
+        $requestedTypes = [];
+
         // text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
         $mimes = explode(",", $accept);
         foreach ($mimes as $mime) {
-                        $parts = explode(";", $mime);
-                        $mimeInfo = $parts[0];
-            switch ($mimeInfo) {
-                case "text/turtle": // turtle
-                case "application/ld+json": //json
-                case "application/rdf+xml": //rdf
-                    return $mimeInfo;
-                break;
-            }
+            $parts = explode(";", $mime);
+            $mimeInfo = $parts[0];
+            $requestedTypes[] = $mimeInfo;
         }
-        return '';
+        return $requestedTypes;
     }
 
-    private function handleReadRequest(Response $response, string $path, $contents, $mime=''): Response
+    private function handleReadRequest(Response $response, string $path, $contents, $acceptedMimeTypes=[]): Response
     {
         $filesystem = $this->filesystem;
+        if (empty($acceptedMimeTypes)) {
+            $mime = '';
+        } else {
+            $mime = $acceptedMimeTypes[0];
+        }
+
         if ($path === "/") { // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
             $contents = $this->listDirectoryAsTurtle($path);
             $response->getBody()->write($contents);
@@ -734,7 +736,13 @@ class Server
                     $mimetype = $filesystem->asMime($mime)->getMimetype($path);
                 }
 
-                $contents = $filesystem->asMime($mime)->read($path);
+                $fileMimeType = $filesystem->asMime('')->getMimetype($path);
+                if (in_array($fileMimeType, $acceptedMimeTypes)) {
+                    $contents = $filesystem->asMime('')->read($path);
+                    $mimetype = $fileMimeType;
+                } else {
+                    $contents = $filesystem->asMime($mime)->read($path);
+                }
 
                 if ($contents !== false) {
                     $response->getBody()->write($contents);

@@ -78,6 +78,7 @@ jobs:
           - '8.1'  # from 2021-11 to 2023-11 (2025-12)
           - '8.2'  # from 2022-12 to 2024-12 (2026-12)
           - '8.3'  # from 2023-11 to 2025-12 (2027-12)
+          - '8.4'  # from 2024-11 to 2026-12 (2028-12)
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -122,6 +123,7 @@ jobs:
           - '8.1'  # from 2021-11 to 2023-11 (2025-12)
           - '8.2'  # from 2022-12 to 2024-12 (2026-12)
           - '8.3'  # from 2023-11 to 2025-12 (2027-12)
+          - '8.4'  # from 2024-11 to 2026-12 (2028-12)
     steps:
       - uses: actions/checkout@v4
       - uses: docker://pipelinecomponents/php-codesniffer

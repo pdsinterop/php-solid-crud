@@ -298,7 +298,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            $graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
+            $graph->parse($data . "\n", "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
 
             // parse query in contents
@@ -312,14 +312,14 @@ class Server
                         case "INSERT":
                             // insert $triple(s) into $graph
                             // @CHECKME: Does the Graph Parse here also need an URI?
-                            $graph->parse($triples, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath); // FIXME: The triples here are in sparql format, not in turtle;
+                            $graph->parse($triples . "\n", "turtle", $this->baseUrl . $this->basePath . $this->requestedPath); // FIXME: The triples here are in sparql format, not in turtle;
 
                         break;
                         case "DELETE":
                             // delete $triples from $graph
                             $deleteGraph = $this->getGraph();
                             // @CHECKME: Does the Graph Parse here also need an URI?
-                            $deleteGraph->parse($triples, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath); // FIXME: The triples here are in sparql format, not in turtle;
+                            $deleteGraph->parse($triples . "\n", "turtle", $this->baseUrl . $this->basePath . $this->requestedPath); // FIXME: The triples here are in sparql format, not in turtle;
                             $resources = $deleteGraph->resources();
                             foreach ($resources as $resource) {
                                 $properties = $resource->propertyUris();
@@ -455,7 +455,7 @@ class Server
 
         try {
             // Assuming this is in our native format, turtle
-            $graph->parse($data, "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
+            $graph->parse($data . "\n", "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
             // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format instead of 'turtle'?
             $instructions = $this->n3Convert($contents);
             foreach ($instructions as $key => $value) {
@@ -463,14 +463,14 @@ class Server
                     case "insert":
                         // error_log("INSERT");
                         // error_log($instructions['insert']);
-                        $graph->parse($instructions['insert'], "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
+                        $graph->parse($instructions['insert'] . "\n", "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
                     break;
                     case "delete":
                         $deleteGraph = $this->getGraph();
                         // error_log("DELETE");
                         // error_log($instructions['delete']);
 
-                        $deleteGraph->parse($instructions['delete'], "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
+                        $deleteGraph->parse($instructions['delete'] . "\n", "turtle", $this->baseUrl . $this->basePath . $this->requestedPath);
                         $resources = $deleteGraph->resources();
                         foreach ($resources as $resource) {
                             $properties = $resource->propertyUris();
@@ -1016,7 +1016,7 @@ EOF;
         $graph = $this->getGraph();
 
         try {
-            $graph->parse($describedByContents, null, '/'.$describedByPath);
+            $graph->parse($describedByContents . "\n", null, '/'.$describedByPath);
         } catch (RdfException $exception) {
             // If the metadata can not be parsed, the resource should still be returned (or a 404)
             // @CHECKME: Should the upstream add a message to the header or something?
@@ -1115,7 +1115,7 @@ EOF;
 
             try {
                 $contents = $this->filesystem->read($describedByPath);
-                $graph->parse($contents, 'turtle', '/'.$describedByPath);
+                $graph->parse($contents . "\n", 'turtle', '/'.$describedByPath);
             } catch (\Throwable $e) {
                 return false;
             }

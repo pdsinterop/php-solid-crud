@@ -721,25 +721,25 @@ class Server
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
                 $response = $response->withHeader("Content-type", "text/turtle")->withStatus(200);
-            } elseif ((true | $this->adapter->setFormat($mime)) && $filesystem->fileExists($path)) {
+            } elseif ((true | $this->adapter->setMimeFormat($mime)) && $filesystem->fileExists($path)) {
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
                 if (preg_match('/\.(acl|meta|ttl)$/', $path)) {
                     $mimetype = "text/turtle"; // FIXME: teach  flysystem that .acl/.meta/.ttl means text/turtle
                 } else {
-                    $this->adapter->setFormat($mime);
+                    $this->adapter->setMimeFormat($mime);
                     $mimetype = $filesystem->mimeType($path);
                 }
 
-                $this->adapter->setFormat('');
+                $this->adapter->setMimeFormat('');
                 $fileMimeType = $filesystem->mimeType($path);
                 if (in_array($fileMimeType, $acceptedMimeTypes)) {
-                    $this->adapter->setFormat('');
+                    $this->adapter->setMimeFormat('');
                     $contents = $filesystem->read($path);
                     $mimetype = $fileMimeType;
                 } else {
-                    $this->adapter->setFormat($mime);
+                    $this->adapter->setMimeFormat($mime);
                     $contents = $filesystem->read($path);
                 }
 
@@ -921,9 +921,9 @@ EOF;
         if (isset($metadataCache[$path]) === false) {
             try {
                 if ($mime) {
-                    $this->adapter->setFormat($mime);
+                    $this->adapter->setMimeFormat($mime);
                     $fileAttributes = $this->adapter->fileSize($path);
-                    $this->adapter->setFormat('');
+                    $this->adapter->setMimeFormat('');
                 } else {
                     $fileAttributes = $this->adapter->fileSize($path);
                 }

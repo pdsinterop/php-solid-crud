@@ -353,8 +353,12 @@ class Server
             $output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
             // write ttl data
 
-            $filesystem->write($path, $output, []);
-            $success = true;
+            try {
+                $filesystem->write($path, $output, []);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
+            }
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
@@ -497,8 +501,12 @@ class Server
             $output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
             // write ttl data
 
-            $filesystem->write($path, $output, []);
-            $success = true;
+            try {
+                $filesystem->write($path, $output, []);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
+            }
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
@@ -534,11 +542,13 @@ class Server
                 $filesystem->write($path, $contents, []);
                 $success = true;
             } catch (FileExistsException $e) {
+                $success = false;
                 $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
                 $response->getBody()->write($message);
 
                 return $response->withStatus(400);
             } catch (Throwable $exception) {
+                $success = false;
                 /*/ An error occurred in the underlying flysystem adapter /*/
                 $message = vsprintf('Could not write to path %s: %s', [$path, $exception->getMessage()]);
                 $response->getBody()->write($message);
@@ -581,7 +591,12 @@ class Server
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-            $success = $filesystem->createDirectory($path);
+            try {
+                $filesystem->createDirectory($path);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
+            }
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
@@ -621,7 +636,12 @@ class Server
                     $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
                     $response->getBody()->write($message);
                 } else {
-                    $success = $filesystem->deleteDirectory($path);
+                    try {
+                        $filesystem->deleteDirectory($path);
+                        $success = true;
+                    } catch (\Exception $e) {
+                        $success = false;
+                    }
                     if ($success) {
                         $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                     }
@@ -629,7 +649,13 @@ class Server
                     $status = $success ? 204 : 500;
                 }
             } else {
-                $success = $filesystem->delete($path);
+                try {
+                    $filesystem->delete($path);
+                    $success = true;
+                } catch (\Exception $e) {
+                    $success = false;
+                }
+
                 if ($success) {
                     $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                 }
@@ -655,8 +681,12 @@ class Server
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-            $filesystem->write($path, $contents, []);
-            $success = true;
+            try {
+                $filesystem->write($path, $contents, []);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
+            }
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
@@ -707,7 +737,8 @@ class Server
             $response->getBody()->write($contents);
             $response = $response->withHeader("Content-type", "text/turtle");
             $response = $response->withStatus(200);
-        } elseif ($filesystem->fileExists($path) === false && $this->hasDescribedBy($path) === false) {
+        } elseif ($filesystem->fileExists($path) === false) { // FIXME: Check with @potherca how this is supposed to work. Removed the hasDescribedBy for now.
+            //  && $this->hasDescribedBy($path) === false) {
             /*/ The file does not exist and no link-metadata is present /*/
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
@@ -945,6 +976,9 @@ EOF;
 
     private function hasDescribedBy(string $path, $mime = null): bool
     {
+        if ($this->adapter->fileExists($path) === false) {
+            return false;
+        }
         return $this->getDescribedByPath($path, $mime) !== '';
     }
 

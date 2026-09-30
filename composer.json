@@ -23,7 +23,7 @@
     "laminas/laminas-diactoros": "^3",
     "league/flysystem": "^1.0",
     "mjrider/flysystem-factory": "^0.7",
-    "pdsinterop/flysystem-rdf": "dev-feature/flysystem-3",
+    "pdsinterop/flysystem-rdf": "dev-main",
     "pietercolpaert/hardf": "^0.3",
     "psr/http-factory": "^1.0",
     "psr/http-message": "^1.0"

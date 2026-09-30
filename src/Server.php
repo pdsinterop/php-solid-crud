@@ -718,22 +718,22 @@ class Server
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
                 $response = $response->withHeader("Content-type", "text/turtle")->withStatus(200);
-            } elseif ($filesystem->asMime($mime)->fileExists($path)) {
+            } elseif ($filesystem->asMime($mime)->fileExists($path)) { // FIXME: setFormat instead
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
                 if (preg_match('/\.(acl|meta|ttl)$/', $path)) {
                     $mimetype = "text/turtle"; // FIXME: teach  flysystem that .acl/.meta/.ttl means text/turtle
                 } else {
-                    $mimetype = $filesystem->asMime($mime)->mimeType($path);
+                    $mimetype = $filesystem->asMime($mime)->mimeType($path); // FIXME: setFormat instead
                 }
 
-                $fileMimeType = $filesystem->asMime('')->mimeType($path);
+                $fileMimeType = $filesystem->asMime('')->mimeType($path); // FIXME: setFormat instead
                 if (in_array($fileMimeType, $acceptedMimeTypes)) {
-                    $contents = $filesystem->asMime('')->read($path);
+                    $contents = $filesystem->asMime('')->read($path); // FIXME: setFormat instead
                     $mimetype = $fileMimeType;
                 } else {
-                    $contents = $filesystem->asMime($mime)->read($path);
+                    $contents = $filesystem->asMime($mime)->read($path); // FIXME: setFormat instead
                 }
 
                 if ($contents !== false) {
@@ -916,10 +916,11 @@ EOF;
 
             try {
                 if ($mime) {
-                    $metadata = $filesystem->asMime($mime)->getMetadata($path);
+                    $fileAttributes = $filesystem->asMime($mime)->getAttributes($path); // FIXME: setFormat instead
                 } else {
-                    $metadata = $filesystem->getMetadata($path);
+                    $fileAttributes = $filesystem->getAttributes($path);
                 }
+                $metadata = $fileAttributes->extraMetaData();
             } catch (FileNotFoundException $e) {
                 $metadata = [];
             }
@@ -997,7 +998,7 @@ EOF;
         $linkMeta = [];
 
         try {
-            $describedByPath = $this->filesystem->getMetadata($path)['describedby'] ?? '';
+            $describedByPath = $this->filesystem->getAttributes($path)->extraMetaData()['describedby'] ?? '';
             $describedByContents = $this->filesystem->read($describedByPath);
         } catch (FileNotFoundException $e) {
             // If, for whatever reason, the file is not present after all, the resource should still be returned (or a 404)

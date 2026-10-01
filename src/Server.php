@@ -630,7 +630,7 @@ class Server
             $mimetype = $filesystem->mimeType($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-                $directoryContents = $filesystem->listContents($path, true);
+                $directoryContents = iterator_to_array($filesystem->listContents($path, true));
                 if (count($directoryContents) > 0) {
                     $status = 400;
                     $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
@@ -811,9 +811,9 @@ class Server
     {
         $filesystem = $this->filesystem;
         if ($path === "/") {
-            $listContents = $filesystem->listContents(".");// FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+            $listContents = iterator_to_array($filesystem->listContents(".")); // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
         } else {
-            $listContents = $filesystem->listContents($path);
+            $listContents = iterator_to_array($filesystem->listContents($path));
         }
         // CHECKME: maybe structure this data als RDF/PHP
         // https://www.easyrdf.org/docs/rdf-formats-php

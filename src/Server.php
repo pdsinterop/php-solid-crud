@@ -90,10 +90,10 @@ class Server
 
     final public function setBaseUrl($url)
     {
-        $this->baseUrl = $url;
-
-        $serverRequest = new ServerRequest(array(),array(), $this->baseUrl);
-        $this->basePath = $serverRequest->getUri()->getPath();
+        $serverRequest = new ServerRequest(array(),array(), $url);
+        $uri = $serverRequest->getUri();
+        $this->basePath = $uri->getPath();
+        $this->baseUrl = $uri->getScheme() . '://' . $uri->getAuthority();
     }
 
     final public function lockToPath($path)
@@ -559,7 +559,7 @@ class Server
             }
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $response = $response->withHeader("Location", $this->baseUrl . $path);
+                $response = $response->withHeader("Location", $this->baseUrl . $this->basePath . $path);
                 $response = $response->withStatus(201);
                 $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_CREATE);
             } else {
@@ -613,12 +613,11 @@ class Server
             return;
         }
 
-        $baseUrl = $this->baseUrl;
-        $this->notifications->send($baseUrl . $path, $type);
+        $this->notifications->send($this->baseUrl . $this->basePath . $path, $type);
 
         while ($path !== "/") {
             $path = $this->parentPath($path);
-            $this->notifications->send($baseUrl . $path, self::NOTIFICATION_TYPE_UPDATE); // checkme: delete on a directory triggers update notifications on parents
+            $this->notifications->send($this->baseUrl . $this->basePath . $path, self::NOTIFICATION_TYPE_UPDATE); // checkme: delete on a directory triggers update notifications on parents
         }
     }
 

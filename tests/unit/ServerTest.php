@@ -9,7 +9,9 @@ use ArgumentCountError;
 use EasyRdf\Graph;
 use Laminas\Diactoros\Response;
 use Laminas\Diactoros\ServerRequest;
-use League\Flysystem\FilesystemInterface;
+use League\Flysystem\FilesystemAdapter;
+use League\Flysystem\FilesystemOperator;
+use League\Flysystem\FileAttributes;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -44,24 +46,40 @@ class ServerTest extends TestCase
         new Server();
     }
 
-    /** @testdox Server should complain when instantiated without Response */
-    public function testInstatiationWithoutResponse()
+    /** @testdox Server should complain when instantiated without Adapter */
+    public function testInstatiationWithoutAdapter()
     {
         $this->expectException(ArgumentCountError::class);
         $this->expectExceptionMessageMatches('/Too few arguments .+ 1 passed/');
 
-        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
 
         new Server($mockFileSystem);
+    }
+
+    /** @testdox Server should be instantiated when constructed without Response */
+    public function testInstatiationWithoutResponse()
+    {
+        $this->expectException(ArgumentCountError::class);
+        $this->expectExceptionMessageMatches('/Too few arguments .+ 2 passed/');
+
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
+        $mockAdapter = $this->getMockBuilder(FilesystemAdapter::class)->getMock();
+
+        $actual = new Server($mockFileSystem, $mockAdapter);
+        $expected = Server::class;
+
+        $this->assertInstanceOf($expected, $actual);
     }
 
     /** @testdox Server should be instantiated when constructed without Graph */
     public function testInstatiationWithoutGraph()
     {
-        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
+        $mockAdapter = $this->getMockBuilder(FilesystemAdapter::class)->getMock();
         $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
 
-        $actual = new Server($mockFileSystem, $mockResponse);
+        $actual = new Server($mockFileSystem, $mockAdapter, $mockResponse);
         $expected = Server::class;
 
         $this->assertInstanceOf($expected, $actual);
@@ -70,11 +88,12 @@ class ServerTest extends TestCase
     /** @testdox Server should be instantiated when constructed with Graph */
     public function testInstatiationWithGraph()
     {
-        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
+        $mockAdapter = $this->getMockBuilder(FilesystemAdapter::class)->getMock();
         $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
 
-        $actual = new Server($mockFileSystem, $mockResponse, $mockGraph);
+        $actual = new Server($mockFileSystem, $mockAdapter, $mockResponse, $mockGraph);
         $expected = Server::class;
 
         $this->assertInstanceOf($expected, $actual);
@@ -88,11 +107,12 @@ class ServerTest extends TestCase
     public function testRespondToRequestWithoutRequest()
     {
         // Arrange
-        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
+        $mockAdapter = $this->getMockBuilder(FilesystemAdapter::class)->getMock();
         $mockResponse = $this->getMockBuilder(ResponseInterface::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
 
-        $server = new Server($mockFileSystem, $mockResponse, $mockGraph);
+        $server = new Server($mockFileSystem, $mockAdapter, $mockResponse, $mockGraph);
 
         // Assert
         $this->expectException(ArgumentCountError::class);
@@ -112,13 +132,14 @@ class ServerTest extends TestCase
     public function testRespondToRequestWithUnsupportedHttpMethod($httpMethod)
     {
         // Arrange
-        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
+        $mockAdapter = $this->getMockBuilder(FilesystemAdapter::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
         $request = $this->createRequest($httpMethod);
 
         $mockResponse = new Response();
 
-        $server = new Server($mockFileSystem, $mockResponse, $mockGraph);
+        $server = new Server($mockFileSystem, $mockAdapter, $mockResponse, $mockGraph);
 
         // Assert
         $this->expectException(Exception::class);
@@ -138,8 +159,11 @@ class ServerTest extends TestCase
     public function testRespondToPOSTCreateRequest($slug, $mimetype, $expected)
     {
         // Arrange
-        $mockFileSystem = $this->getMockBuilder(FilesystemInterface::class)->getMock();
+        $mockFileSystem = $this->getMockBuilder(FilesystemOperator::class)->getMock();
+        $mockAdapter = $this->getMockBuilder(FilesystemAdapter::class)->getMock();
         $mockGraph = $this->getMockBuilder(Graph::class)->getMock();
+        $mockAttributes = $this->getMockBuilder(FileAttributes::class)->setConstructorArgs(['/'])->getMock();
+
         $request = $this->createRequest('POST', [
             'Content-Type' => $mimetype,
             'Link' => '',
@@ -147,24 +171,34 @@ class ServerTest extends TestCase
         ]);
 
         $mockFileSystem
-            ->method('has')
+            ->method('fileExists')
+            ->willReturnCallback(function($path) {
+                if ($path === self::MOCK_PATH) {
+                    return true;
+                }
+                return false;
+            });
+
+        $mockAdapter
+            ->method('fileSize')
             ->withAnyParameters()
-            ->willReturnMap([
-                [self::MOCK_PATH, true],
+            ->willReturn($mockAttributes);
+
+        $mockAttributes
+            ->method('extraMetaData')
+            ->withAnyParameters()
+            ->willReturn([
+//                'describedby' => self::MOCK_PATH . ".meta",
+//                'acl' => self::MOCK_PATH . ".acl"
             ]);
 
         $mockFileSystem
-            ->method('getMimetype')
+            ->method('mimeType')
             ->with(self::MOCK_PATH)
             ->willReturn(Server::MIME_TYPE_DIRECTORY);
 
-        $mockFileSystem
-            ->method('write')
-            ->withAnyParameters()
-            ->willReturn(true);
-
         // Act
-        $server = new Server($mockFileSystem, new Response(), $mockGraph);
+        $server = new Server($mockFileSystem, $mockAdapter, new Response(), $mockGraph);
         $response = $server->respondToRequest($request);
 
         // Assert

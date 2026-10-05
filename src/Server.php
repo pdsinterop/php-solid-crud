@@ -8,7 +8,8 @@ use EasyRdf\Graph as Graph;
 use Laminas\Diactoros\ServerRequest;
 use League\Flysystem\FileExistsException;
 use League\Flysystem\FileNotFoundException;
-use League\Flysystem\FilesystemInterface as Filesystem;
+use League\Flysystem\FilesystemOperator as Filesystem;
+use League\Flysystem\FilesystemAdapter;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Throwable;
@@ -61,6 +62,8 @@ class Server
     private $requestedPath;
     /** @var Filesystem */
     private $filesystem;
+    /** @var FilesystemAdapter */
+    private $adapter;
     /** @var Graph */
     private $graph;
     /** @var SolidNotificationsInterface */
@@ -87,10 +90,10 @@ class Server
 
     final public function setBaseUrl($url)
     {
-        $this->baseUrl = $url;
-
-        $serverRequest = new ServerRequest(array(),array(), $this->baseUrl);
-        $this->basePath = $serverRequest->getUri()->getPath();
+        $serverRequest = new ServerRequest(array(),array(), $url);
+        $uri = $serverRequest->getUri();
+        $this->basePath = $uri->getPath();
+        $this->baseUrl = $uri->getScheme() . '://' . $uri->getAuthority();
     }
 
     final public function lockToPath($path)
@@ -105,12 +108,13 @@ class Server
     //////////////////////////////// PUBLIC API \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
     // @TODO: The Graph should be injected by the caller
-    final public function __construct(Filesystem $filesystem, Response $response, ?Graph $graph = null)
+    final public function __construct(Filesystem $filesystem, FilesystemAdapter $adapter, Response $response, ?Graph $graph = null)
     {
         $this->basePath = '';
         $this->baseUrl = '';
         $this->lockedPath = false;
         $this->filesystem = $filesystem;
+        $this->adapter = $adapter;
         $this->graph = $graph ?? new Graph();
         $this->response = $response;
         // @TODO: Mention \EasyRdf_Namespace::set('lm', 'https://purl.org/pdsinterop/link-metadata#');
@@ -208,9 +212,9 @@ class Server
                 }
             break;
             case 'POST':
-                $pathExists = $filesystem->has($path);
+                $pathExists = $filesystem->fileExists($path);
                 if ($pathExists) {
-                    $mimetype = $filesystem->getMimetype($path);
+                    $mimetype = $filesystem->mimeType($path);
                 }
                 if ($path === "/") {
                     $pathExists = true;
@@ -268,7 +272,7 @@ class Server
                         $response = $this->handleCreateDirectoryRequest($response, $path);
                     break;
                     default:
-                        if ($filesystem->has($path) === true) {
+                        if ($filesystem->fileExists($path) === true) {
                             $response = $this->handleUpdateRequest($response, $path, $contents);
                         } else {
                             $response = $this->handleCreateRequest($response, $path, $contents);
@@ -289,7 +293,7 @@ class Server
         $filesystem = $this->filesystem;
         $graph = $this->getGraph();
 
-        if ($filesystem->has($path) === false) {
+        if ($filesystem->fileExists($path) === false) {
             $data = '';
         } else {
             // read ttl data
@@ -349,12 +353,12 @@ class Server
             $output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
             // write ttl data
 
-            if ($filesystem->has($path) === true) {
-                $success = $filesystem->update($path, $output);
-            } else {
-                $success = $filesystem->write($path, $output);
+            try {
+                $filesystem->write($path, $output, []);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
             }
-
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
@@ -446,7 +450,7 @@ class Server
         $graph = $this->getGraph();
         $n3Graph = $this->getGraph();
 
-        if ($filesystem->has($path) === false) {
+        if ($filesystem->fileExists($path) === false) {
             $data = '';
         } else {
             // read ttl data
@@ -497,12 +501,12 @@ class Server
             $output = $graph->serialise("turtle"); // FIXME: Use enums from namespace Pdsinterop\Rdf\Enum\Format?
             // write ttl data
 
-            if ($filesystem->has($path) === true) {
-                $success = $filesystem->update($path, $output);
-            } else {
-                $success = $filesystem->write($path, $output);
+            try {
+                $filesystem->write($path, $output, []);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
             }
-
             $response = $response->withStatus($success ? 201 : 500);
 
             if ($success) {
@@ -524,26 +528,27 @@ class Server
     private function handleCreateRequest(Response $response, string $path, $contents): Response
     {
         $filesystem = $this->filesystem;
-
-        if ($filesystem->has($path) === true) {
+        if ($filesystem->fileExists($path) === true) {
             $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
             $success = false;
-
             set_error_handler(static function ($severity, $message, $filename, $line) {
                 throw new \ErrorException($message, 0, $severity, $filename, $line);
             });
 
             try {
-                $success = $filesystem->write($path, $contents);
+                $filesystem->write($path, $contents, []);
+                $success = true;
             } catch (FileExistsException $e) {
+                $success = false;
                 $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
                 $response->getBody()->write($message);
 
                 return $response->withStatus(400);
             } catch (Throwable $exception) {
+                $success = false;
                 /*/ An error occurred in the underlying flysystem adapter /*/
                 $message = vsprintf('Could not write to path %s: %s', [$path, $exception->getMessage()]);
                 $response->getBody()->write($message);
@@ -552,10 +557,9 @@ class Server
             } finally {
                 restore_error_handler();
             }
-
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
-                $response = $response->withHeader("Location", $this->baseUrl . $path);
+                $response = $response->withHeader("Location", $this->baseUrl . $this->basePath . $path);
                 $response = $response->withStatus(201);
                 $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_CREATE);
             } else {
@@ -582,12 +586,17 @@ class Server
     private function handleCreateDirectoryRequest(Response $response, string $path): Response
     {
         $filesystem = $this->filesystem;
-        if ($filesystem->has($path) === true) {
+        if ($filesystem->fileExists($path) === true) {
             $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-            $success = $filesystem->createDir($path);
+            try {
+                $filesystem->createDirectory($path);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
+            }
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
@@ -604,12 +613,11 @@ class Server
             return;
         }
 
-        $baseUrl = $this->baseUrl;
-        $this->notifications->send($baseUrl . $path, $type);
+        $this->notifications->send($this->baseUrl . $this->basePath . $path, $type);
 
         while ($path !== "/") {
             $path = $this->parentPath($path);
-            $this->notifications->send($baseUrl . $path, self::NOTIFICATION_TYPE_UPDATE); // checkme: delete on a directory triggers update notifications on parents
+            $this->notifications->send($this->baseUrl . $this->basePath . $path, self::NOTIFICATION_TYPE_UPDATE); // checkme: delete on a directory triggers update notifications on parents
         }
     }
 
@@ -617,17 +625,22 @@ class Server
     {
         $filesystem = $this->filesystem;
 
-        if ($filesystem->has($path)) {
-            $mimetype = $filesystem->getMimetype($path);
+        if ($filesystem->fileExists($path)) {
+            $mimetype = $filesystem->mimeType($path);
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-                $directoryContents = $filesystem->listContents($path, true);
+                $directoryContents = iterator_to_array($filesystem->listContents($path, true));
                 if (count($directoryContents) > 0) {
                     $status = 400;
                     $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
                     $response->getBody()->write($message);
                 } else {
-                    $success = $filesystem->deleteDir($path);
+                    try {
+                        $filesystem->deleteDirectory($path);
+                        $success = true;
+                    } catch (\Exception $e) {
+                        $success = false;
+                    }
                     if ($success) {
                         $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                     }
@@ -635,7 +648,13 @@ class Server
                     $status = $success ? 204 : 500;
                 }
             } else {
-                $success = $filesystem->delete($path);
+                try {
+                    $filesystem->delete($path);
+                    $success = true;
+                } catch (\Exception $e) {
+                    $success = false;
+                }
+
                 if ($success) {
                     $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                 }
@@ -656,12 +675,17 @@ class Server
     {
         $filesystem = $this->filesystem;
 
-        if ($filesystem->has($path) === false) {
+        if ($filesystem->fileExists($path) === false) {
             $message = vsprintf(self::ERROR_PUT_NON_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
         } else {
-            $success = $filesystem->update($path, $contents);
+            try {
+                $filesystem->write($path, $contents, []);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
+            }
             $response = $response->withStatus($success ? 201 : 500);
             if ($success) {
                 $this->removeLinkFromMetaFileFor($path);
@@ -707,12 +731,13 @@ class Server
                 '<http://www.w3.org/ns/pim/space#Storage>; rel="type"',
             ]);
             $response = $response->withStatus(200);
-        } elseif(($filesystem->has($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
+        } elseif(($filesystem->fileExists($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
             $contents = '';
             $response->getBody()->write($contents);
             $response = $response->withHeader("Content-type", "text/turtle");
             $response = $response->withStatus(200);
-        } elseif ($filesystem->has($path) === false && $this->hasDescribedBy($path) === false) {
+        } elseif ($filesystem->fileExists($path) === false) { // FIXME: Check with @potherca how this is supposed to work. Removed the hasDescribedBy for now.
+            //  && $this->hasDescribedBy($path) === false) {
             /*/ The file does not exist and no link-metadata is present /*/
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
             $response->getBody()->write($message);
@@ -722,33 +747,37 @@ class Server
             if ($linkMetadataResponse !== null) {
                 /*/ Link-metadata is present, return the altered response /*/
                 $response = $linkMetadataResponse;
-            } elseif ($filesystem->getMimetype($path) === self::MIME_TYPE_DIRECTORY) {
+            } elseif ($filesystem->mimeType($path) === self::MIME_TYPE_DIRECTORY) {
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
                 $response = $response->withHeader("Content-type", "text/turtle")->withStatus(200);
-            } elseif ($filesystem->asMime($mime)->has($path)) {
+            } elseif ((true | $this->adapter->setMimeFormat($mime)) && $filesystem->fileExists($path)) {
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
                 if (preg_match('/\.(acl|meta|ttl)$/', $path)) {
                     $mimetype = "text/turtle"; // FIXME: teach  flysystem that .acl/.meta/.ttl means text/turtle
                 } else {
-                    $mimetype = $filesystem->asMime($mime)->getMimetype($path);
+                    $this->adapter->setMimeFormat($mime);
+                    $mimetype = $filesystem->mimeType($path);
                 }
 
-                $fileMimeType = $filesystem->asMime('')->getMimetype($path);
+                $this->adapter->setMimeFormat('');
+                $fileMimeType = $filesystem->mimeType($path);
                 if (in_array($fileMimeType, $acceptedMimeTypes)) {
-                    $contents = $filesystem->asMime('')->read($path);
+                    $this->adapter->setMimeFormat('');
+                    $contents = $filesystem->read($path);
                     $mimetype = $fileMimeType;
                 } else {
-                    $contents = $filesystem->asMime($mime)->read($path);
+                    $this->adapter->setMimeFormat($mime);
+                    $contents = $filesystem->read($path);
                 }
 
                 if ($contents !== false) {
                     $response->getBody()->write($contents);
                     $response = $response->withHeader("Content-type", $mimetype)->withStatus(200);
                 } else {
-                    // FIXME: we should not get here if the file does not exist, but here we are. It looks like $filesystem->has("/.meta") always returns true even if the file does not exist;
+                    // FIXME: we should not get here if the file does not exist, but here we are. It looks like $filesystem->fileExists("/.meta") always returns true even if the file does not exist;
                     if ($path == "/.meta") {
             $contents = '';
             $response->getBody()->write($contents);
@@ -781,9 +810,9 @@ class Server
     {
         $filesystem = $this->filesystem;
         if ($path === "/") {
-            $listContents = $filesystem->listContents(".");// FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
+            $listContents = iterator_to_array($filesystem->listContents(".")); // FIXME: this is a patch to make it work for Solid-Nextcloud; we should be able to just list '/';
         } else {
-            $listContents = $filesystem->listContents($path);
+            $listContents = iterator_to_array($filesystem->listContents($path));
         }
         // CHECKME: maybe structure this data als RDF/PHP
         // https://www.easyrdf.org/docs/rdf-formats-php
@@ -920,14 +949,15 @@ EOF;
         static $metadataCache = [];
 
         if (isset($metadataCache[$path]) === false) {
-            $filesystem = $this->filesystem;
-
             try {
                 if ($mime) {
-                    $metadata = $filesystem->asMime($mime)->getMetadata($path);
+                    $this->adapter->setMimeFormat($mime);
+                    $fileAttributes = $this->adapter->fileSize($path);
+                    $this->adapter->setMimeFormat('');
                 } else {
-                    $metadata = $filesystem->getMetadata($path);
+                    $fileAttributes = $this->adapter->fileSize($path);
                 }
+                $metadata = $fileAttributes->extraMetaData();
             } catch (FileNotFoundException $e) {
                 $metadata = [];
             }
@@ -945,6 +975,9 @@ EOF;
 
     private function hasDescribedBy(string $path, $mime = null): bool
     {
+        if ($this->adapter->fileExists($path) === false) {
+            return false;
+        }
         return $this->getDescribedByPath($path, $mime) !== '';
     }
 
@@ -1005,7 +1038,7 @@ EOF;
         $linkMeta = [];
 
         try {
-            $describedByPath = $this->filesystem->getMetadata($path)['describedby'] ?? '';
+            $describedByPath = $this->adapter->fileSize($path)->extraMetaData()['describedby'] ?? '';
             $describedByContents = $this->filesystem->read($describedByPath);
         } catch (FileNotFoundException $e) {
             // If, for whatever reason, the file is not present after all, the resource should still be returned (or a 404)
@@ -1090,7 +1123,7 @@ EOF;
         foreach ($rdfPaths as $rdfPath) {
             if (
                 strrpos($path, $rdfPath) === 0
-                && $this->filesystem->has($rdfPath)
+                && $this->filesystem->fileExists($rdfPath)
             ) {
                 // @FIXME: We have no way of knowing if the file is a directory or a file.
                 //         This means that, unless we make a trialing slash `/` required,
@@ -1151,7 +1184,8 @@ EOF;
             if ($changed) {
                 $changedContents = $graph->serialise('turtle');
                 try {
-                    $result = $this->filesystem->update($describedByPath, $changedContents);
+                    $this->filesystem->write($describedByPath, $changedContents, []);
+                    $result = true;
                 } catch (FileNotFoundException $exception) {
                     // $result is already false;
                 }

@@ -212,7 +212,7 @@ class Server
                 }
             break;
             case 'POST':
-                $pathExists = $filesystem->fileExists($path);
+                $pathExists = $filesystem->fileExists($path) || $filesystem->directoryExists($path);
                 if ($pathExists) {
                     $mimetype = $filesystem->mimeType($path);
                 }
@@ -272,7 +272,7 @@ class Server
                         $response = $this->handleCreateDirectoryRequest($response, $path);
                     break;
                     default:
-                        if ($filesystem->fileExists($path) === true) {
+                        if ($filesystem->fileExists($path) === true || $filesystem->directoryExists($path) === true) {
                             $response = $this->handleUpdateRequest($response, $path, $contents);
                         } else {
                             $response = $this->handleCreateRequest($response, $path, $contents);
@@ -293,7 +293,7 @@ class Server
         $filesystem = $this->filesystem;
         $graph = $this->getGraph();
 
-        if ($filesystem->fileExists($path) === false) {
+        if ($filesystem->fileExists($path) === false && $filesystem->directoryExists($path) === false) {
             $data = '';
         } else {
             // read ttl data
@@ -450,7 +450,7 @@ class Server
         $graph = $this->getGraph();
         $n3Graph = $this->getGraph();
 
-        if ($filesystem->fileExists($path) === false) {
+        if ($filesystem->fileExists($path) === false && $filesystem->directoryExists($path) === false) {
             $data = '';
         } else {
             // read ttl data
@@ -528,7 +528,7 @@ class Server
     private function handleCreateRequest(Response $response, string $path, $contents): Response
     {
         $filesystem = $this->filesystem;
-        if ($filesystem->fileExists($path) === true) {
+        if ($filesystem->fileExists($path) === true || $filesystem->directoryExists($path) === true) {
             $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
@@ -586,7 +586,7 @@ class Server
     private function handleCreateDirectoryRequest(Response $response, string $path): Response
     {
         $filesystem = $this->filesystem;
-        if ($filesystem->fileExists($path) === true) {
+        if ($filesystem->fileExists($path) === true || $filesystem->directoryExists($path) === true) {
             $message = vsprintf(self::ERROR_PUT_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
@@ -625,8 +625,12 @@ class Server
     {
         $filesystem = $this->filesystem;
 
-        if ($filesystem->fileExists($path)) {
-            $mimetype = $filesystem->mimeType($path);
+        if ($filesystem->fileExists($path) || $filesystem->directoryExists($path)) {
+            if ($filesystem->fileExists($path)) {
+                $mimetype = $filesystem->mimeType($path);
+            } else {
+                $mimetype = self::MIME_TYPE_DIRECTORY;
+            }
 
             if ($mimetype === self::MIME_TYPE_DIRECTORY) {
                 $directoryContents = iterator_to_array($filesystem->listContents($path, true));
@@ -675,7 +679,7 @@ class Server
     {
         $filesystem = $this->filesystem;
 
-        if ($filesystem->fileExists($path) === false) {
+        if ($filesystem->fileExists($path) === false && $filesystem->directoryExists($path) === false) {
             $message = vsprintf(self::ERROR_PUT_NON_EXISTING_RESOURCE, [$path]);
             $response->getBody()->write($message);
             $response = $response->withStatus(400);
@@ -731,12 +735,12 @@ class Server
                 '<http://www.w3.org/ns/pim/space#Storage>; rel="type"',
             ]);
             $response = $response->withStatus(200);
-        } elseif(($filesystem->fileExists($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
+        } elseif(($filesystem->fileExists($path) === false && $filesystem->directoryExists($path) === false) && (($path == ".meta") || ($path == "/.meta"))) {
             $contents = '';
             $response->getBody()->write($contents);
             $response = $response->withHeader("Content-type", "text/turtle");
             $response = $response->withStatus(200);
-        } elseif ($filesystem->fileExists($path) === false) { // FIXME: Check with @potherca how this is supposed to work. Removed the hasDescribedBy for now.
+        } elseif ($filesystem->fileExists($path) === false && $filesystem->directoryExists($path) === false) { // FIXME: Check with @potherca how this is supposed to work. Removed the hasDescribedBy for now.
             //  && $this->hasDescribedBy($path) === false) {
             /*/ The file does not exist and no link-metadata is present /*/
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
@@ -751,7 +755,7 @@ class Server
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
                 $response = $response->withHeader("Content-type", "text/turtle")->withStatus(200);
-            } elseif ((true | $this->adapter->setMimeFormat($mime)) && $filesystem->fileExists($path)) {
+            } elseif ((true | $this->adapter->setMimeFormat($mime)) && $filesystem->fileExists($path) || $filesystem->directoryExists($path)) {
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
@@ -952,10 +956,10 @@ EOF;
             try {
                 if ($mime) {
                     $this->adapter->setMimeFormat($mime);
-                    $fileAttributes = $this->adapter->fileSize($path);
+                    $fileAttributes = $this->adapter->lastModified($path);
                     $this->adapter->setMimeFormat('');
                 } else {
-                    $fileAttributes = $this->adapter->fileSize($path);
+                    $fileAttributes = $this->adapter->lastModified($path);
                 }
                 $metadata = $fileAttributes->extraMetaData();
             } catch (FileNotFoundException $e) {
@@ -975,7 +979,7 @@ EOF;
 
     private function hasDescribedBy(string $path, $mime = null): bool
     {
-        if ($this->adapter->fileExists($path) === false) {
+        if ($this->adapter->fileExists($path) === false) { //  && $this->adapter->directoryExists($path) === false) {
             return false;
         }
         return $this->getDescribedByPath($path, $mime) !== '';
@@ -1123,7 +1127,7 @@ EOF;
         foreach ($rdfPaths as $rdfPath) {
             if (
                 strrpos($path, $rdfPath) === 0
-                && $this->filesystem->fileExists($rdfPath)
+                && ($this->filesystem->fileExists($rdfPath) || $this->filesystem->directoryExists($rdfPath))
             ) {
                 // @FIXME: We have no way of knowing if the file is a directory or a file.
                 //         This means that, unless we make a trialing slash `/` required,

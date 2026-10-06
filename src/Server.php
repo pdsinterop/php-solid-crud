@@ -840,7 +840,7 @@ class Server
                 case "file":
                     // ACL and meta files should not be listed in directory overview
                     if (
-                        $item['basename'] !== '.meta'
+                        basename($item['path']) !== '.meta'
                         && in_array($item['extension']??'', ['acl', 'meta']) === false
                     ) {
                         try {
@@ -856,7 +856,7 @@ class Server
                             || in_array($linkMetadataResponse->getStatusCode(), [404, 410]) === false
                         ) {
                             /*/ Only files without link-metadata instruction, or with a redirect instruction may be shown /*/
-                            $filename = "<" . rawurlencode($item['basename']) . ">";
+                            $filename = "<" . rawurlencode(basename($item['path'])) . ">";
                             $turtle[$filename] = array(
                                 "a" => array("ldp:Resource")
                             );
@@ -866,7 +866,7 @@ class Server
                 break;
                 case "dir":
                     // FIXME: we have a trailing slash here to please the test suits, but it probably should also pass without it since we are a Container.
-                    $filename = "<" . rawurlencode($item['basename']) . "/>";
+                    $filename = "<" . rawurlencode(basename($item['path'])) . "/>";
                     $turtle[$filename] = array(
                         "a" => array("ldp:BasicContainer", "ldp:Container", "ldp:Resource")
                     );

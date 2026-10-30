@@ -143,6 +143,9 @@ class Server
 
         $contents = $request->getBody()->getContents();
 
+        if ($this->filesystem->fileExists($path)) {
+            $path = rtrim($path, "/"); // if it is a file, it should not end in a slash
+        }
         return $this->handle($method, $path, $contents, $request);
     }
 
@@ -249,6 +252,7 @@ class Server
                         break;
                     }
                 } elseif ($filesystem->fileExists($path)) {
+                    $path = rtrim($path, "/");
                     $response = $this->handleUpdateRequest($response, $path, $contents);
                 } else {
                     $response = $this->handleCreateRequest($response, $path, $contents);

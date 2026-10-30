@@ -35,7 +35,6 @@ class Server
     public const ERROR_PUT_NON_EXISTING_RESOURCE = self::ERROR_PATH_DOES_NOT_EXIST . '. Can not "PUT" non-existing resource. Use "POST" instead';
     public const ERROR_UNKNOWN_HTTP_METHOD = 'Unknown or unsupported HTTP METHOD "%s"';
 
-    public const MIME_TYPE_DIRECTORY = 'directory';
     private const QUERY_PARAM_HTTP_METHOD = 'http-method';
 
     private const NOTIFICATION_TYPE_CREATE = "Create";
@@ -212,55 +211,45 @@ class Server
                 }
             break;
             case 'POST':
-                $pathExists = $filesystem->fileExists($path) || $filesystem->directoryExists($path);
-                if ($pathExists) {
-                    $mimetype = $filesystem->mimeType($path);
-                }
-                if ($path === "/") {
-                    $pathExists = true;
-                    $mimetype = self::MIME_TYPE_DIRECTORY;
-                }
-                if ($pathExists === true) {
-                    if (isset($mimetype) && $mimetype === self::MIME_TYPE_DIRECTORY) {
-                        $contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
-                        $slug = $request->getHeaderLine("Slug");
-                        if ($slug) {
-                            $filename = $slug;
-                        } else {
-                            $filename = $this->guid();
-                            // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
-                            switch ($contentType) {
-                                case '':
-                                    // FIXME: if no content type was passed, we should reject the request according to the spec;
-                                break;
-                                case "text/plain":
-                                    $filename .= ".txt";
-                                break;
-                                case "text/turtle":
-                                    $filename .= ".ttl";
-                                break;
-                                case "text/html":
-                                    $filename .= ".html";
-                                break;
-                                case "application/json":
-                                case "application/ld+json":
-                                    $filename .= ".json";
-                                break;
-                            }
-                        }
-
-                        $link = $request->getHeaderLine("Link");
-                        switch ($link) {
-                            case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
-                                $response = $this->handleCreateDirectoryRequest($response, $path . $filename);
-                            break;
-                            default:
-                                $response = $this->handleCreateRequest($response, $path . $filename, $contents);
-                            break;
-                        }
+                if ($path === "/" || $filesystem->directoryExists($path)) {
+                    $contentType= explode(";", $request->getHeaderLine("Content-Type"))[0];
+                    $slug = $request->getHeaderLine("Slug");
+                    if ($slug) {
+                        $filename = $slug;
                     } else {
-                        $response = $this->handleUpdateRequest($response, $path, $contents);
+                        $filename = $this->guid();
+                        // FIXME: make this list complete for at least the things we'd expect (turtle, n3, jsonld, ntriples, rdf);
+                        switch ($contentType) {
+                            case '':
+                                // FIXME: if no content type was passed, we should reject the request according to the spec;
+                            break;
+                            case "text/plain":
+                                $filename .= ".txt";
+                            break;
+                            case "text/turtle":
+                                $filename .= ".ttl";
+                            break;
+                            case "text/html":
+                                $filename .= ".html";
+                            break;
+                            case "application/json":
+                            case "application/ld+json":
+                                $filename .= ".json";
+                            break;
+                        }
                     }
+
+                    $link = $request->getHeaderLine("Link");
+                    switch ($link) {
+                        case '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"':
+                            $response = $this->handleCreateDirectoryRequest($response, $path . $filename);
+                        break;
+                        default:
+                            $response = $this->handleCreateRequest($response, $path . $filename, $contents);
+                        break;
+                    }
+                } elseif ($filesystem->fileExists($path)) {
+                    $response = $this->handleUpdateRequest($response, $path, $contents);
                 } else {
                     $response = $this->handleCreateRequest($response, $path, $contents);
                 }
@@ -625,46 +614,38 @@ class Server
     {
         $filesystem = $this->filesystem;
 
-        if ($filesystem->fileExists($path) || $filesystem->directoryExists($path)) {
-            if ($filesystem->fileExists($path)) {
-                $mimetype = $filesystem->mimeType($path);
-            } else {
-                $mimetype = self::MIME_TYPE_DIRECTORY;
+        if ($filesystem->fileExists($path)) {
+            try {
+                $filesystem->delete($path);
+                $success = true;
+            } catch (\Exception $e) {
+                $success = false;
             }
 
-            if ($mimetype === self::MIME_TYPE_DIRECTORY) {
-                $directoryContents = iterator_to_array($filesystem->listContents($path, true));
-                if (count($directoryContents) > 0) {
-                    $status = 400;
-                    $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
-                    $response->getBody()->write($message);
-                } else {
-                    try {
-                        $filesystem->deleteDirectory($path);
-                        $success = true;
-                    } catch (\Exception $e) {
-                        $success = false;
-                    }
-                    if ($success) {
-                        $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
-                    }
-
-                    $status = $success ? 204 : 500;
-                }
+            if ($success) {
+                $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
+            }
+            $status = $success ? 204 : 500;
+            $response = $response->withStatus($status);
+        } elseif ($filesystem->directoryExists($path)) {
+            $directoryContents = iterator_to_array($filesystem->listContents($path, true));
+            if (count($directoryContents) > 0) {
+                $status = 400;
+                $message = vsprintf(self::ERROR_CAN_NOT_DELETE_NON_EMPTY_CONTAINER, [$path]);
+                $response->getBody()->write($message);
             } else {
                 try {
-                    $filesystem->delete($path);
+                    $filesystem->deleteDirectory($path);
                     $success = true;
                 } catch (\Exception $e) {
                     $success = false;
                 }
-
                 if ($success) {
                     $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_DELETE);
                 }
+
                 $status = $success ? 204 : 500;
             }
-
             $response = $response->withStatus($status);
         } else {
             $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);
@@ -679,11 +660,7 @@ class Server
     {
         $filesystem = $this->filesystem;
 
-        if ($filesystem->fileExists($path) === false && $filesystem->directoryExists($path) === false) {
-            $message = vsprintf(self::ERROR_PUT_NON_EXISTING_RESOURCE, [$path]);
-            $response->getBody()->write($message);
-            $response = $response->withStatus(400);
-        } else {
+        if ($filesystem->fileExists($path)) {
             try {
                 $filesystem->write($path, $contents, []);
                 $success = true;
@@ -695,6 +672,12 @@ class Server
                 $this->removeLinkFromMetaFileFor($path);
                 $this->sendNotificationUpdate($path, self::NOTIFICATION_TYPE_UPDATE);
             }
+        } elseif ($filesystem->directoryExists($path)) {
+            // FIXME: What to do with an update to a dir? Update the 'describedBy?'
+        } else {
+            $message = vsprintf(self::ERROR_PUT_NON_EXISTING_RESOURCE, [$path]);
+            $response->getBody()->write($message);
+            $response = $response->withStatus(400);
         }
 
         return $response;
@@ -751,11 +734,11 @@ class Server
             if ($linkMetadataResponse !== null) {
                 /*/ Link-metadata is present, return the altered response /*/
                 $response = $linkMetadataResponse;
-            } elseif ($filesystem->mimeType($path) === self::MIME_TYPE_DIRECTORY) {
+            } elseif ($filesystem->directoryExists($path)) {
                 $contents = $this->listDirectoryAsTurtle($path);
                 $response->getBody()->write($contents);
                 $response = $response->withHeader("Content-type", "text/turtle")->withStatus(200);
-            } elseif ((true | $this->adapter->setMimeFormat($mime)) && $filesystem->fileExists($path) || $filesystem->directoryExists($path)) {
+            } elseif ((true | $this->adapter->setMimeFormat($mime)) && $filesystem->fileExists($path)) {
             /*/ The file does exist and no link-metadata is present /*/
                 $response = $this->addLinkRelationHeaders($response, $path, $mime);
 
@@ -783,10 +766,10 @@ class Server
                 } else {
                     // FIXME: we should not get here if the file does not exist, but here we are. It looks like $filesystem->fileExists("/.meta") always returns true even if the file does not exist;
                     if ($path == "/.meta") {
-            $contents = '';
-            $response->getBody()->write($contents);
-            $response = $response->withHeader("Content-type", "text/turtle");
-            $response = $response->withStatus(200);
+                        $contents = '';
+                        $response->getBody()->write($contents);
+                        $response = $response->withHeader("Content-type", "text/turtle");
+                        $response = $response->withStatus(200);
                     } else {
                         /*/ The file does exist in another format and no link-metadata is present /*/
                         $message = vsprintf(self::ERROR_PATH_DOES_NOT_EXIST, [$path]);

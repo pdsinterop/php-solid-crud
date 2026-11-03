@@ -174,6 +174,15 @@ class ServerTest extends TestCase
             ->method('fileExists')
             ->willReturnCallback(function($path) {
                 if ($path === self::MOCK_PATH) {
+                    return false;
+                }
+                return false;
+            });
+
+        $mockFileSystem
+            ->method('directoryExists')
+            ->willReturnCallback(function($path) {
+                if ($path === self::MOCK_PATH) {
                     return true;
                 }
                 return false;
@@ -191,11 +200,6 @@ class ServerTest extends TestCase
 //                'describedby' => self::MOCK_PATH . ".meta",
 //                'acl' => self::MOCK_PATH . ".acl"
             ]);
-
-        $mockFileSystem
-            ->method('mimeType')
-            ->with(self::MOCK_PATH)
-            ->willReturn(Server::MIME_TYPE_DIRECTORY);
 
         // Act
         $server = new Server($mockFileSystem, $mockAdapter, new Response(), $mockGraph);
